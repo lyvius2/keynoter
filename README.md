@@ -1,5 +1,12 @@
 # Keynoter
 
+[![Platform](https://img.shields.io/badge/platform-macOS%2026%2B-000000?logo=apple&logoColor=white)](https://www.apple.com/macos/)
+[![Swift](https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white)](https://swift.org)
+[![SwiftPM](https://img.shields.io/badge/SwiftPM-compatible-4BC51D?logo=swift&logoColor=white)](https://www.swift.org/documentation/package-manager/)
+[![Foundation Models](https://img.shields.io/badge/AI-Foundation%20Models-5E5CE6?logo=apple&logoColor=white)](https://developer.apple.com/documentation/foundationmodels)
+![Inference](https://img.shields.io/badge/inference-on--device-blue)
+![Status](https://img.shields.io/badge/status-early%20development-orange)
+
 > [한국어(Korean) 문서](./README_KR.md)
 
 **An on-device AI presentation agent for Apple Keynote.**
