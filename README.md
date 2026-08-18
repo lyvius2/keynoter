@@ -1,5 +1,7 @@
 # Keynoter
 
+> [한국어(Korean) 문서](./README_KR.md)
+
 **An on-device AI presentation agent for Apple Keynote.**
 
 Keynoter is a macOS-native conversational CLI that creates and edits
@@ -66,21 +68,21 @@ server.
 
 Planned MVP commands:
 
-  Command                 Description
-  ----------------------- ---------------------------------------------------------
-  `/help`                 Show available commands
-  `/create {filename}`    Create a new Keynote presentation
-  `/edit {path}`          Start editing an existing Keynote presentation
-  `/status`               Show the current session and document state
-  `/open`                 Open or focus the active document in Keynote
-  `/save`                 Save the active presentation
-  `/save-as {filename}`   Save the presentation under another name
-  `/undo`                 Undo the latest Keynoter operation
-  `/redo`                 Reapply the latest undone operation
-  `/script`               Show the AppleScript generated for the latest operation
-  `/doctor`               Check the local Keynoter environment
-  `/close`                Close the active document session
-  `/exit`                 Exit Keynoter
+| Command | Description |
+|---|---|
+| `/help` | Show available commands |
+| `/create {filename}` | Create a new Keynote presentation |
+| `/edit {path}` | Start editing an existing Keynote presentation |
+| `/status` | Show the current session and document state |
+| `/open` | Open or focus the active document in Keynote |
+| `/save` | Save the active presentation |
+| `/save-as {filename}` | Save the presentation under another name |
+| `/undo` | Undo the latest Keynoter operation |
+| `/redo` | Reapply the latest undone operation |
+| `/script` | Show the AppleScript generated for the latest operation |
+| `/doctor` | Check the local Keynoter environment |
+| `/close` | Close the active document session |
+| `/exit` | Exit Keynoter |
 
 Presentation changes themselves are expressed in natural language rather
 than as commands:
@@ -131,59 +133,80 @@ generated automation inspectable through `/script`.
 -   **Automation:** AppleScript / Apple Events
 -   **Interface:** Interactive CLI / REPL
 
-Xcode is recommended for access to Apple's SDK and Swift toolchain, but
-it does not need to be the primary editor.
+Xcode is required: the macOS 26 SDK it ships with is what provides the
+FoundationModels framework, and the Command Line Tools alone are not
+enough to build the package. It does not need to be your primary editor.
 
 ## Project Status
 
-Keynoter is currently in the **initial design / MVP planning stage**.
+Keynoter is in **early development**. The interactive shell runs today;
+it parses and dispatches every command, but the handlers that touch
+Keynote are still stubs.
 
-The first implementation milestone will focus on:
+Implementation milestones:
 
--   interactive CLI / REPL;
--   Foundation Models integration;
--   structured `PresentationAction` generation;
--   Keynote document creation and editing;
--   deterministic AppleScript rendering;
--   save/open/session management;
--   undo/redo;
--   environment diagnostics;
--   AppleScript inspection.
+-   [x] interactive CLI / REPL --- command parsing, dispatch, session state
+-   [ ] environment diagnostics (`/doctor`, `/status`)
+-   [ ] Keynote document creation and editing
+-   [ ] save/open/session management
+-   [ ] structured `PresentationAction` generation and validation
+-   [ ] deterministic AppleScript rendering
+-   [ ] undo/redo
+-   [ ] AppleScript inspection (`/script`)
+-   [ ] Foundation Models integration
 
 PDF and PowerPoint export, richer layouts, diagrams, images, themes, and
 presentation templates are planned for later phases.
 
 ## Development
 
-The current proposed package layout is:
+``` bash
+swift build          # build
+swift run keynoter   # run the REPL
+swift test           # run the test suite
+```
+
+If `swift build` fails while compiling the manifest, the active toolchain
+is the Command Line Tools rather than Xcode. Point it at Xcode once:
+
+``` bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
+Package layout --- directories tagged with a phase do not exist yet:
 
 ``` text
 keynoter/
 ├── Package.swift
-├── CLAUDE.md
+├── CLAUDE.md · CLAUDE_KR.md     — developer guide
 ├── AGENTS.md
-├── README.md
-└── Sources/
-    └── Keynoter/
-        ├── main.swift
-        ├── CLI/
-        ├── AI/
-        ├── Domain/
-        ├── Keynote/
-        ├── Session/
-        └── Diagnostics/
+├── README.md · README_KR.md
+├── Sources/
+│   └── Keynoter/
+│       ├── main.swift
+│       ├── CLI/                 — REPL, parsing, console output
+│       ├── Session/             — session state
+│       ├── Diagnostics/         — /doctor checks              (Phase 1)
+│       ├── Keynote/             — AppleScript execution       (Phase 2)
+│       ├── Domain/              — actions, validation         (Phase 3)
+│       └── AI/                  — Foundation Models client    (Phase 4)
+└── Tests/
+    └── KeynoterTests/           — Swift Testing suites
 ```
 
 For architecture, implementation rules, MVP scope, and current design
 decisions, read:
 
--   [`CLAUDE.md`](./CLAUDE.md)
+-   [`CLAUDE.md`](./CLAUDE.md) (한국어: [`CLAUDE_KR.md`](./CLAUDE_KR.md))
 -   [`AGENTS.md`](./AGENTS.md)
 
 ## Planned Next Step
 
-The next design task is to define the `PresentationAction` domain
-contract:
+Finish Phase 1 --- `/doctor` and `/status` --- then Phase 2, where
+`/create` and `/edit` start driving real Keynote documents through
+AppleScript.
+
+After that comes the `PresentationAction` domain contract:
 
 -   action types;
 -   Foundation Models structured output;
@@ -191,6 +214,8 @@ contract:
 -   AppleScript mappings;
 -   undo/redo behavior;
 -   error/result handling.
+
+The full phase plan lives in [`CLAUDE.md`](./CLAUDE.md).
 
 ------------------------------------------------------------------------
 
