@@ -65,8 +65,10 @@ Sources/
     ├── main.swift                      — async entry point, launches REPL
     ├── CLI/
     │   ├── REPL.swift                  — read-eval-print loop
-    │   ├── Command.swift               — slash command enum
-    │   └── CommandParser.swift         — tokenizes input, returns Command or NL prompt
+    │   ├── Command.swift               — slash command enum + command catalog
+    │   ├── CommandParser.swift         — tokenizes input, returns Command or NL prompt
+    │   ├── LineReader.swift            — stdin line input, TTY detection
+    │   └── Console.swift               — all terminal output and styling
     ├── AI/
     │   ├── FoundationModelClient.swift — owns LanguageModelSession
     │   ├── PresentationPlanner.swift   — NL prompt → [PresentationAction]
@@ -83,6 +85,9 @@ Sources/
     │   └── History.swift               — action log, undo/redo stacks
     └── Diagnostics/
         └── Doctor.swift                — /doctor environment checks
+
+Tests/
+└── KeynoterTests/                      — Swift Testing suites, run with `swift test`
 ```
 
 ---
@@ -183,6 +188,16 @@ AddSlide(index: 3, spec: ...) →
 
 ## Build & Run
 
+**Toolchain:** the macOS 26 SDK (required for FoundationModels) ships only with Xcode,
+not the Command Line Tools. If `swift build` fails on the manifest or cannot find
+FoundationModels, point the toolchain at Xcode:
+
+```bash
+sudo xcode-select -s /Applications/Xcode.app
+```
+
+Without admin rights, prefix commands with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` instead.
+
 ```bash
 # Build
 swift build
@@ -190,10 +205,28 @@ swift build
 # Run
 swift run keynoter
 
+# Test
+swift test
+
 # Build release binary
 swift build -c release
 cp .build/release/keynoter /usr/local/bin/keynoter
 ```
+
+---
+
+## Testing
+
+Swift Testing (`import Testing`, `@Test`, `#expect`) — not XCTest. Tests live in
+`Tests/KeynoterTests/` and run with `swift test`.
+
+Test the pure logic, not the terminal: `CommandParser`, validation, and the
+`AppleScriptRenderer` (assert on the rendered string — never execute it in a test).
+`Console` output and live Keynote automation stay out of the suite.
+
+The renderer is the highest-value target: once Phase 3 lands, every
+`PresentationAction` should have a test pinning its exact AppleScript, including
+escaping of quotes and backslashes in text fields.
 
 ---
 
