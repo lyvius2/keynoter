@@ -146,17 +146,21 @@ enough to build the package. It does not need to be your primary editor.
 
 ## Project Status
 
-Keynoter is in **early development**. The interactive shell runs today;
-it parses and dispatches every command, reports on the local environment
-through `/doctor`, and tracks session state through `/status`. The
-handlers that touch Keynote itself are still stubs.
+Keynoter is in **early development**. The interactive shell runs today.
+Slash commands parse and dispatch through the REPL, `/doctor` reports on
+the local environment, and the six Keynote-driving commands
+(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk to
+Keynote through AppleScript. `/status` reads live slide metadata back
+from the front document. What is still missing is the `PresentationAction`
+layer, `/undo`/`/redo`, `/script`, and the Foundation Models plumbing
+that turns natural-language input into structured slide edits.
 
 Implementation milestones:
 
 -   [x] interactive CLI / REPL --- command parsing, dispatch, session state
 -   [x] environment diagnostics (`/doctor`, `/status`)
--   [ ] Keynote document creation and editing
--   [ ] save/open/session management
+-   [x] Keynote document creation and editing
+-   [x] save/open/session management
 -   [ ] structured `PresentationAction` generation and validation
 -   [ ] deterministic AppleScript rendering
 -   [ ] undo/redo
@@ -210,10 +214,7 @@ decisions, read:
 
 ## Planned Next Step
 
-Phase 2 --- `/create` and `/edit` start driving real Keynote documents
-through AppleScript.
-
-After that comes the `PresentationAction` domain contract:
+Phase 3 --- the `PresentationAction` domain contract:
 
 -   action types;
 -   Foundation Models structured output;
