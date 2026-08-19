@@ -46,6 +46,13 @@ final class Session {
         self.lastAppleScript = nil
     }
 
+    /// Updates the tracked path in place — used after `/save-as` where the
+    /// contents (and therefore slide metadata) do not change.
+    func renameDocument(to path: URL) {
+        self.documentPath = path
+        self.isModified = false
+    }
+
     func updateSlideMetadata(_ slides: [SlideInfo]) {
         slideMetadata = slides
     }

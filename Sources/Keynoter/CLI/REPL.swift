@@ -1,16 +1,16 @@
 import Foundation
 
 /// The read-eval-print loop: reads a line, routes it, prints the result, repeats.
-///
-/// Command *behavior* lands in later phases; this loop owns only the routing.
 @MainActor
 final class REPL {
 
     private let session: Session
+    private let controller: KeynoteController
     private let reader = LineReader()
 
-    init(session: Session) {
+    init(session: Session, controller: KeynoteController = KeynoteController()) {
         self.session = session
+        self.controller = controller
     }
 
     func run() async {
@@ -50,19 +50,18 @@ final class REPL {
         case .exit:
             session.shouldExit = true
 
-        // Phase 2 — Keynote integration
-        case .create:
-            notImplemented("/create", phase: 2)
-        case .edit:
-            notImplemented("/edit", phase: 2)
+        case .create(let name):
+            await handleCreate(name)
+        case .edit(let path):
+            await handleEdit(path)
         case .open:
-            notImplemented("/open", phase: 2)
+            await handleOpen()
         case .save:
-            notImplemented("/save", phase: 2)
-        case .saveAs:
-            notImplemented("/save-as", phase: 2)
+            await handleSave()
+        case .saveAs(let name):
+            await handleSaveAs(name)
         case .close:
-            notImplemented("/close", phase: 2)
+            await handleClose()
 
         // Phase 3 — domain model & renderer
         case .undo:
@@ -73,7 +72,7 @@ final class REPL {
             notImplemented("/script", phase: 3)
 
         case .status:
-            printStatus()
+            await printStatus()
         case .doctor:
             printDoctor()
         }
@@ -83,6 +82,118 @@ final class REPL {
         // Phase 4 wires this to PresentationPlanner.
         Console.warning("Natural-language planning is not wired up yet (Phase 4).")
         Console.info("Received prompt: \(prompt)")
+    }
+
+    // MARK: - Keynote commands
+
+    private func handleCreate(_ name: String) async {
+        if session.hasDocument {
+            Console.warning("A document is already open. Use /close first.")
+            return
+        }
+        let url = PathResolver.resolveKeynotePath(name)
+        if FileManager.default.fileExists(atPath: url.path) {
+            Console.failure("File already exists: \(url.path). Use /edit to open it.")
+            return
+        }
+        do {
+            try await controller.createDocument(at: url)
+            session.attach(documentPath: url, mode: .create)
+            Console.success("Created \(url.lastPathComponent)")
+            await refreshSlides()
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func handleEdit(_ path: String) async {
+        if session.hasDocument {
+            Console.warning("A document is already open. Use /close first.")
+            return
+        }
+        let url = PathResolver.resolveKeynotePath(path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            Console.failure("File not found: \(url.path)")
+            return
+        }
+        do {
+            try await controller.openDocument(at: url)
+            session.attach(documentPath: url, mode: .edit)
+            Console.success("Opened \(url.lastPathComponent)")
+            await refreshSlides()
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func handleOpen() async {
+        guard session.hasDocument else {
+            Console.warning("No active document. Use /create <name> or /edit <path>.")
+            return
+        }
+        do {
+            try await controller.activate()
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func handleSave() async {
+        guard session.hasDocument else {
+            Console.warning("No active document.")
+            return
+        }
+        do {
+            try await controller.saveDocument()
+            session.markModified(false)
+            Console.success("Saved \(session.documentName ?? "")")
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func handleSaveAs(_ name: String) async {
+        guard session.hasDocument else {
+            Console.warning("No active document.")
+            return
+        }
+        let url = PathResolver.resolveKeynotePath(name)
+        if FileManager.default.fileExists(atPath: url.path) {
+            Console.failure("File already exists: \(url.path).")
+            return
+        }
+        do {
+            try await controller.saveDocumentAs(at: url)
+            session.renameDocument(to: url)
+            Console.success("Saved as \(url.lastPathComponent)")
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func handleClose() async {
+        guard session.hasDocument else {
+            Console.warning("No active document.")
+            return
+        }
+        do {
+            try await controller.closeDocument(save: true)
+            let name = session.documentName ?? ""
+            session.closeDocument()
+            Console.success("Closed \(name)")
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func refreshSlides() async {
+        do {
+            let slides = try await controller.readSlideMetadata()
+            session.updateSlideMetadata(slides)
+        } catch {
+            // Non-fatal: leave cached metadata in place, tell the user why.
+            Console.warning("Could not read slide metadata: \(errorMessage(error))")
+        }
     }
 
     // MARK: - Output
@@ -102,7 +213,12 @@ final class REPL {
         Console.warning("\(command) is not implemented yet (Phase \(phase)).")
     }
 
-    private func printStatus() {
+    private func printStatus() async {
+        // Refresh from Keynote first so a slide count edited outside Keynoter
+        // still shows up. Failure is silent — the cached value is still shown.
+        if session.hasDocument {
+            await refreshSlides()
+        }
         Console.heading("Status")
         guard let name = session.documentName else {
             Console.info("  No active document. Use /create <name> or /edit <path>.")
@@ -137,5 +253,16 @@ final class REPL {
         case .fail:
             Console.info("Environment has blocking issues — address them before continuing.")
         }
+    }
+
+    // MARK: - Errors
+
+    private func reportError(_ error: Error) {
+        Console.failure(errorMessage(error))
+    }
+
+    private func errorMessage(_ error: Error) -> String {
+        if let ae = error as? AppleScriptError { return ae.userMessage }
+        return "\(error)"
     }
 }

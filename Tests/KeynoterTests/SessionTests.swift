@@ -69,6 +69,27 @@ struct SessionTests {
         #expect(session.isModified == false)
     }
 
+    @Test("Renaming preserves slide metadata and resets the modified flag")
+    func renameDocument() {
+        let session = Session()
+        session.attach(documentPath: deck, mode: .edit)
+        session.updateSlideMetadata([
+            SlideInfo(index: 1, title: "Intro"),
+            SlideInfo(index: 2, title: "Architecture")
+        ])
+        session.markModified()
+
+        let newPath = URL(fileURLWithPath: "/tmp/copy.key")
+        session.renameDocument(to: newPath)
+
+        #expect(session.documentPath == newPath)
+        #expect(session.documentName == "copy.key")
+        #expect(session.mode == .edit)
+        #expect(session.isModified == false)
+        #expect(session.slideCount == 2)
+        #expect(session.slideMetadata.first?.title == "Intro")
+    }
+
     @Test("Closing the document leaves the session usable")
     func closeDocument() {
         let session = Session()

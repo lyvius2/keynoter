@@ -102,3 +102,27 @@ struct AppleScriptExecutor: Sendable {
         return String(text.dropLast())
     }
 }
+
+extension AppleScriptError {
+
+    /// A one-line, human-readable rendering of the error suitable for the
+    /// REPL. Well-known Apple Events codes get bespoke text; anything else
+    /// falls back to osascript's stderr.
+    var userMessage: String {
+        switch self {
+        case .executionFailed(_, let code, _, let stderr):
+            switch code {
+            case -1743:
+                return "Automation permission denied. Grant this terminal permission to control Keynote in System Settings > Privacy & Security > Automation."
+            case -1728:
+                return "Keynote couldn't find that object — is a document open?"
+            case -1712:
+                return "Keynote didn't respond in time."
+            default:
+                return stderr.isEmpty ? "AppleScript execution failed." : stderr
+            }
+        case .launchFailed(let reason):
+            return "Could not launch osascript: \(reason)"
+        }
+    }
+}

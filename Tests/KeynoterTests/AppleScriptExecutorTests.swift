@@ -123,3 +123,46 @@ struct AppleScriptExecutorHelperTests {
         #expect(AppleScriptExecutor.stripTrailingNewline("hello\n\n") == "hello\n")
     }
 }
+
+@Suite("AppleScriptError.userMessage")
+struct AppleScriptErrorMessageTests {
+
+    @Test("-1743 becomes a Settings-shaped Automation-permission message")
+    func automationDenied() {
+        let error = AppleScriptError.executionFailed(
+            exitCode: 1, errorCode: -1743, stdout: "", stderr: "Not authorized (-1743)"
+        )
+        #expect(error.userMessage.contains("Automation"))
+        #expect(error.userMessage.contains("System Settings"))
+    }
+
+    @Test("-1728 becomes a friendly no-document message")
+    func objectNotFound() {
+        let error = AppleScriptError.executionFailed(
+            exitCode: 1, errorCode: -1728, stdout: "", stderr: "..."
+        )
+        #expect(error.userMessage.contains("document"))
+    }
+
+    @Test("An unknown error code falls back to stderr")
+    func fallsBackToStderr() {
+        let error = AppleScriptError.executionFailed(
+            exitCode: 1, errorCode: -9999, stdout: "", stderr: "the raw message"
+        )
+        #expect(error.userMessage == "the raw message")
+    }
+
+    @Test("Empty stderr with an unknown code yields a generic message")
+    func emptyStderrFallback() {
+        let error = AppleScriptError.executionFailed(
+            exitCode: 1, errorCode: nil, stdout: "", stderr: ""
+        )
+        #expect(error.userMessage == "AppleScript execution failed.")
+    }
+
+    @Test("launchFailed surfaces the underlying reason")
+    func launchFailed() {
+        let error = AppleScriptError.launchFailed(reason: "binary missing")
+        #expect(error.userMessage.contains("binary missing"))
+    }
+}
