@@ -72,11 +72,10 @@ final class REPL {
         case .script:
             notImplemented("/script", phase: 3)
 
-        // Phase 1 — remaining shell commands
         case .status:
-            notImplemented("/status", phase: 1)
+            printStatus()
         case .doctor:
-            notImplemented("/doctor", phase: 1)
+            printDoctor()
         }
     }
 
@@ -101,5 +100,42 @@ final class REPL {
 
     private func notImplemented(_ command: String, phase: Int) {
         Console.warning("\(command) is not implemented yet (Phase \(phase)).")
+    }
+
+    private func printStatus() {
+        Console.heading("Status")
+        guard let name = session.documentName else {
+            Console.info("  No active document. Use /create <name> or /edit <path>.")
+            return
+        }
+        Console.line("  Document: \(name)")
+        if let path = session.documentPath?.path {
+            Console.line("  Path:     \(path)")
+        }
+        Console.line("  Mode:     \(session.mode.rawValue)")
+        Console.line("  Slides:   \(session.slideCount)")
+        Console.line("  Modified: \(session.isModified ? "yes" : "no")")
+    }
+
+    private func printDoctor() {
+        let report = Doctor.report()
+        Console.heading("Doctor")
+        for check in report.checks {
+            let text = "\(check.name): \(check.detail)"
+            switch check.severity {
+            case .ok: Console.success(text)
+            case .warn: Console.warning(text)
+            case .fail: Console.failure(text)
+            }
+        }
+        Console.line()
+        switch report.overall {
+        case .ok:
+            Console.info("Environment ready.")
+        case .warn:
+            Console.info("Environment usable — review the warnings above.")
+        case .fail:
+            Console.info("Environment has blocking issues — address them before continuing.")
+        }
     }
 }

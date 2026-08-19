@@ -145,13 +145,14 @@ macOS 26 SDK에서 제공되며, Command Line Tools만으로는 이 패키지를
 ## 프로젝트 현황
 
 Keynoter는 **초기 개발 단계**에 있습니다. 대화형 셸은 현재 동작하며 모든
-명령어를 파싱하고 디스패치하지만, Keynote를 실제로 조작하는 핸들러는 아직
-스텁 상태입니다.
+명령어를 파싱하고 디스패치합니다. `/doctor`는 로컬 실행 환경을 점검하고,
+`/status`는 세션 상태를 표시합니다. Keynote를 실제로 조작하는 핸들러는
+아직 스텁 상태입니다.
 
 구현 마일스톤:
 
 -   [x] 대화형 CLI / REPL — 명령어 파싱, 디스패치, 세션 상태
--   [ ] 환경 진단 (`/doctor`, `/status`)
+-   [x] 환경 진단 (`/doctor`, `/status`)
 -   [ ] Keynote 문서 생성 및 편집
 -   [ ] 저장/열기/세션 관리
 -   [ ] 구조화된 `PresentationAction` 생성 및 검증
@@ -206,8 +207,8 @@ keynoter/
 
 ## 다음 단계
 
-먼저 Phase 1(`/doctor`, `/status`)을 마무리한 뒤, `/create`와 `/edit`가
-AppleScript를 통해 실제 Keynote 문서를 조작하기 시작하는 Phase 2로 넘어갑니다.
+Phase 2 — `/create`와 `/edit`가 AppleScript를 통해 실제 Keynote 문서를
+조작하기 시작합니다.
 
 그다음이 `PresentationAction` 도메인 계약 정의입니다:
 

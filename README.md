@@ -147,13 +147,14 @@ enough to build the package. It does not need to be your primary editor.
 ## Project Status
 
 Keynoter is in **early development**. The interactive shell runs today;
-it parses and dispatches every command, but the handlers that touch
-Keynote are still stubs.
+it parses and dispatches every command, reports on the local environment
+through `/doctor`, and tracks session state through `/status`. The
+handlers that touch Keynote itself are still stubs.
 
 Implementation milestones:
 
 -   [x] interactive CLI / REPL --- command parsing, dispatch, session state
--   [ ] environment diagnostics (`/doctor`, `/status`)
+-   [x] environment diagnostics (`/doctor`, `/status`)
 -   [ ] Keynote document creation and editing
 -   [ ] save/open/session management
 -   [ ] structured `PresentationAction` generation and validation
@@ -209,9 +210,8 @@ decisions, read:
 
 ## Planned Next Step
 
-Finish Phase 1 --- `/doctor` and `/status` --- then Phase 2, where
-`/create` and `/edit` start driving real Keynote documents through
-AppleScript.
+Phase 2 --- `/create` and `/edit` start driving real Keynote documents
+through AppleScript.
 
 After that comes the `PresentationAction` domain contract:
 

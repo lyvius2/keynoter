@@ -232,13 +232,13 @@ escaping of quotes and backslashes in text fields.
 
 ## Development Phases
 
-### Phase 1 — CLI Shell (current)
+### Phase 1 — CLI Shell (done)
 `Package.swift` platform target · directory structure · `REPL.swift` · `CommandParser.swift`
 · `Session.swift` · `Doctor.swift` · `/help` `/doctor` `/status` `/exit`
 
 **Done when:** `keynoter` launches, accepts slash commands, `/doctor` runs.
 
-### Phase 2 — Keynote Integration
+### Phase 2 — Keynote Integration (current)
 `AppleScriptExecutor` · `KeynoteController` · `/create` `/edit` `/open` `/save` `/save-as` `/close`
 
 **Done when:** `/create demo` produces `demo.key`, `/status` shows slide count.

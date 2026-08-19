@@ -234,13 +234,13 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 
 ## 개발 단계
 
-### Phase 1 — CLI 셸 (현재 단계)
+### Phase 1 — CLI 셸 (완료)
 `Package.swift` 플랫폼 타깃 · 디렉터리 구조 · `REPL.swift` · `CommandParser.swift`
 · `Session.swift` · `Doctor.swift` · `/help` `/doctor` `/status` `/exit`
 
 **완료 기준:** `keynoter`가 실행되고, 슬래시 명령어를 받아들이며, `/doctor`가 동작한다.
 
-### Phase 2 — Keynote 연동
+### Phase 2 — Keynote 연동 (현재 단계)
 `AppleScriptExecutor` · `KeynoteController` · `/create` `/edit` `/open` `/save` `/save-as` `/close`
 
 **완료 기준:** `/create demo`가 `demo.key`를 생성하고, `/status`가 슬라이드 수를 표시한다.
