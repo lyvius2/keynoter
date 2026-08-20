@@ -72,6 +72,7 @@ Sources/
     ├── AI/
     │   ├── FoundationModelClient.swift — owns LanguageModelSession
     │   ├── PresentationPlanner.swift   — NL prompt → [PresentationAction]
+    │   ├── PresentationPlan.swift      — @Generable plan types + conversion to actions
     │   └── PromptBuilder.swift         — builds system instructions + user prompt
     ├── Domain/
     │   ├── PresentationSpec.swift      — PresentationSpec, SlideSpec, SlideLayout

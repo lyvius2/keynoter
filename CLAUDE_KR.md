@@ -74,6 +74,7 @@ Sources/
     ├── AI/
     │   ├── FoundationModelClient.swift — LanguageModelSession 소유
     │   ├── PresentationPlanner.swift   — 자연어 프롬프트 → [PresentationAction]
+    │   ├── PresentationPlan.swift      — @Generable 계획 타입 + 액션 변환
     │   └── PromptBuilder.swift         — 시스템 지시문 + 사용자 프롬프트 구성
     ├── Domain/
     │   ├── PresentationSpec.swift      — PresentationSpec, SlideSpec, SlideLayout
