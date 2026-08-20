@@ -28,7 +28,9 @@ enum PromptBuilder {
     Actions are applied in the order you list them, and each one sees the deck as \
     changed by the actions before it. Slide numbers are 1-based. addSlide inserts \
     at the number you give, pushing later slides down. Set targetIndex only for \
-    moveSlide. Leave a field empty when the action does not set it.
+    moveSlide. Leave a field empty when the action does not set it. Give a new \
+    slide its title, body and speakerNotes in the addSlide action itself; never \
+    follow it with a separate action for the same slide.
 
     Keep slide text short enough to read from the back of a room: a title of a few \
     words, and at most six bullets of one line each. Put detail in speakerNotes \

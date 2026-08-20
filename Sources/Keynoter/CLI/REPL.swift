@@ -23,6 +23,7 @@ final class REPL {
 
     func run() async {
         Console.banner()
+        announcePlanner()
 
         while !session.shouldExit {
             guard let line = reader.readLine(prompt: Console.prompt) else {
@@ -34,6 +35,15 @@ final class REPL {
         }
 
         Console.info("Goodbye.")
+    }
+
+    /// Says so up front when natural language will not work, rather than
+    /// letting the user discover it on their first request. Silent when the
+    /// model is available — a working setup should not have to be told.
+    private func announcePlanner() {
+        if case .unavailable(let reason) = FoundationModelClient.availability() {
+            Console.warning(reason)
+        }
     }
 
     // MARK: - Routing
@@ -153,6 +163,7 @@ final class REPL {
             session.recordAppleScript(opened.script)
             Console.success("Created \(url.lastPathComponent)")
             await refreshSlides()
+            planner.client.prewarm()
         } catch {
             reportError(error)
         }
@@ -174,6 +185,9 @@ final class REPL {
             session.recordAppleScript(opened.script)
             Console.success("Opened \(url.lastPathComponent)")
             await refreshSlides()
+            // A document is open, so a natural-language request is now possible:
+            // start loading the model before the user asks for one.
+            planner.client.prewarm()
         } catch {
             reportError(error)
         }

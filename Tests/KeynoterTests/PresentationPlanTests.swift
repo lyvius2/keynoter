@@ -213,5 +213,8 @@ struct PromptBuilderTests {
         // A new deck's one empty slide should become the title slide, not be
         // left behind as a blank first page.
         #expect(text.contains("empty slide"))
+        // One action per new slide: splitting notes into a follow-up action is
+        // where the model loses count of how many slides exist.
+        #expect(text.contains("never \\\nfollow it with a separate action") || text.contains("never follow it with a separate action"))
     }
 }

@@ -24,12 +24,16 @@ $ keynoter
 
 ✓ Created msk-migration.key
 
-> Create an 8-slide presentation about AWS MSK Migration Architecture
-  for software engineers. Include AS-IS, TO-BE, and Migration Strategy.
+> Create a 5-slide presentation about AWS MSK migration for software
+  engineers. Cover AS-IS, TO-BE, and migration strategy.
 
-Planning presentation...
-Generating slides...
-Applying changes to Keynote...
+Planning...
+Applying 5 changes...
+  add slide 1
+  add slide 2
+  add slide 3
+  add slide 4
+  update slide 5
 
 ✓ Done.
 ```
@@ -130,6 +134,30 @@ Keynote
 This keeps model reasoning separate from application execution and makes
 generated automation inspectable through `/script`.
 
+## Planning
+
+What you type in plain language becomes a *plan*: an ordered list of changes
+like "add a slide at 3" or "replace slide 4's bullets". Apple's on-device model
+fills that plan in; it never writes AppleScript, and it is never asked to.
+
+Each change is then checked against the document as it stands, rendered to a
+fixed AppleScript template, and applied. Every step is logged as it lands:
+
+``` text
+> Slide 4 has too much text. Keep only the three most important points.
+
+Planning...
+Applying 1 change...
+  update slide 4
+✓ Done.
+```
+
+If a step fails, the plan stops there rather than pressing on --- the later
+changes were planned around slide numbers that no longer hold. Whatever already
+applied stays on the undo stack.
+
+Planning runs entirely on your Mac. Nothing about your presentation leaves it.
+
 ## Which Document?
 
 Keynoter targets the document you opened, by the id Keynote assigns it --- not
@@ -176,18 +204,18 @@ enough to build the package. It does not need to be your primary editor.
 
 ## Project Status
 
-Keynoter is in **early development**, and everything below the language
-model is now in place. Slash commands parse and dispatch through the REPL,
-`/doctor` reports on the local environment, and the six Keynote-driving
-commands (`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk
-to Keynote through AppleScript. `/status` reads live slide metadata back
-from the session's document.
+Keynoter is in **early development**, but the whole pipeline now runs
+end to end. Slash commands parse and dispatch through the REPL, `/doctor`
+reports on the local environment, and the six Keynote-driving commands
+(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk to
+Keynote through AppleScript. `/status` reads live slide metadata back from
+the session's document.
 
-The action pipeline is complete: every `PresentationAction` is validated,
-rendered to a fixed AppleScript template, executed, and recorded on an
-undo stack, with `/undo`, `/redo`, and `/script` wired to it. What remains
-is the Foundation Models plumbing that turns natural-language input into
-those actions.
+Typing a request in plain language plans a set of changes with Apple's
+on-device model, converts them to validated `PresentationAction`s, renders
+each to a fixed AppleScript template, and applies them in order --- with
+`/undo`, `/redo`, and `/script` wired to the result. What remains is
+polish: unsaved-change warnings, richer progress output, and export.
 
 Implementation milestones:
 
@@ -200,7 +228,7 @@ Implementation milestones:
 -   [x] undo/redo
 -   [x] AppleScript inspection (`/script`)
 -   [x] document targeting by id, independent of the front window
--   [ ] Foundation Models integration
+-   [x] Foundation Models integration --- natural language to slides
 
 PDF and PowerPoint export, richer layouts, diagrams, images, themes, and
 presentation templates are planned for later phases.
@@ -249,14 +277,12 @@ decisions, read:
 
 ## Planned Next Step
 
-Phase 4 --- Foundation Models integration:
+Phase 5 --- polish:
 
--   a `LanguageModelSession` producing `@Generable` action types;
--   a planner that turns one natural-language request into a sequence of
-    validated `PresentationAction`s;
--   natural-language input wired into the REPL;
--   mapping model-supplied theme names onto the locally installed
-    (and localized) Keynote themes.
+-   warn about unsaved changes on `/exit`;
+-   richer progress display while a plan is being applied;
+-   graceful behaviour when Apple Intelligence is unavailable;
+-   context-window management for long sessions.
 
 The full phase plan lives in [`CLAUDE.md`](./CLAUDE.md).
 

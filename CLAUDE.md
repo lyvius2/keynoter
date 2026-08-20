@@ -251,6 +251,30 @@ let plan = try await session.respond(
 Use `@Generable` on all types the model must return. Use `@Guide` to constrain
 field values. Keep instructions under 3 paragraphs (token budget).
 
+Decisions that hold the planner together:
+
+- **`.greedy` sampling.** A plan is a structured command, not creative writing:
+  the same request against the same deck should produce the same slides, and a
+  misbehaving prompt has to be reproducible.
+- **`GenerableAction` is a flat record**, not an enum with associated values —
+  easier for a small on-device model to fill in reliably. Unused fields are
+  empty and the converter ignores them.
+- **The planner cannot emit `createPresentation`.** Documents are `/create`'s
+  job, and the omission means every model-driven action is reversible, so
+  `/undo` always works on them.
+- **Empty means "leave alone" on `updateSlide`**, not "clear". The domain model
+  can express clearing; the model cannot reliably signal which it meant, and
+  keeping content is the safer reading.
+- **The session survives across requests** so follow-ups ("make that shorter")
+  have context. On `exceededContextWindowSize` the session is rebuilt and the
+  request retried once — the deck outline rides in the prompt, so nothing the
+  planner needs is lost.
+- **Slide metadata is re-read between actions.** Each applied action shifts the
+  numbers the next one was planned against.
+- **A failed step stops the plan.** Later actions assume the slide numbers the
+  earlier ones were supposed to produce, so continuing past a failure edits the
+  wrong slides. What already applied stays on the undo stack.
+
 ---
 
 ## AppleScript Renderer Contract
@@ -331,18 +355,19 @@ escaping of quotes and backslashes in text fields.
 
 **Done when:** Actions can be applied, rendered to AppleScript, and undone.
 
-### Phase 4 — AI Integration (current)
+### Phase 4 — AI Integration (done)
 `FoundationModelClient` · `PresentationPlanner` · `@Generable` action types
 · Natural-language input wired to planner in REPL
 
 **Done when:** Typing a NL request creates/edits slides in Keynote end-to-end.
 
-**Watch out:** Keynote theme names are localized. On a Korean system
-`theme "White"` fails with `-1728` and `theme "흰색"` succeeds. Mapping a
-model-supplied English theme name onto the installed themes belongs here, not in
-the renderer.
+**Theme names turned out not to matter here.** They are localized — on a Korean
+system `theme "White"` fails with `-1728` and `theme "흰색"` succeeds — but the
+planner never emits `createPresentation`, so no theme name ever reaches the
+renderer. Mapping English theme names onto the installed ones becomes real work
+only when `/create` grows a theme argument (Phase 6).
 
-### Phase 5 — Polish
+### Phase 5 — Polish (current)
 Progress display · graceful degradation when Apple Intelligence unavailable
 · unsaved-change warning on `/exit` · context window management
 
