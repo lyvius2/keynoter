@@ -77,10 +77,13 @@ Sources/
     │   └── PromptBuilder.swift         — 시스템 지시문 + 사용자 프롬프트 구성
     ├── Domain/
     │   ├── PresentationSpec.swift      — PresentationSpec, SlideSpec, SlideLayout
-    │   └── PresentationAction.swift    — PresentationAction enum + @Generable 타입 + 검증
+    │   ├── PresentationAction.swift    — PresentationAction enum + @Generable 타입 + 검증
+    │   └── InverseBuilder.swift        — 액션 → 그 액션을 되돌리는 액션
     ├── Keynote/
     │   ├── KeynoteController.swift     — 문서 생성/열기/저장, 슬라이드 메타데이터 조회
     │   ├── AppleScriptRenderer.swift   — PresentationAction → AppleScript 문자열
+    │   ├── AppleScriptString.swift     — AppleScript 리터럴용 단일 이스케이퍼
+    │   ├── ActionRunner.swift          — 검증 → 스냅샷 → 렌더 → 실행 → 기록
     │   └── AppleScriptExecutor.swift   — osascript 실행, 결과 또는 오류 반환
     ├── Session/
     │   ├── Session.swift               — 인메모리 세션 상태
@@ -103,9 +106,55 @@ var mode: SessionMode          // .create | .edit
 var isModified: Bool
 var slideMetadata: [SlideInfo] // 제목, 인덱스 — 각 액션 후 동기화
 var lastAppleScript: String?
-var undoStack: [PresentationAction]
-var redoStack: [PresentationAction]
+var history: History           // HistoryEntry의 undo/redo 스택
 ```
+
+---
+
+## Undo 모델
+
+`PresentationAction`은 **그 자체로는 되돌릴 수 없다** — `deleteSlide(3)`은 슬라이드 3이
+무엇을 담고 있었는지 알지 못한다. 그래서 역액션은 액션을 실행하기 *전에*, 아직 이전 상태를
+읽을 수 있을 때 계산하고, 이 쌍을 함께 저장한다:
+
+```swift
+struct HistoryEntry {
+    let applied: PresentationAction   // /redo에서 다시 실행
+    let inverse: PresentationAction   // /undo에서 실행
+}
+```
+
+전체 순서는 `ActionRunner`가 주도한다:
+
+```
+검증 → "이전" 슬라이드 읽기(역액션에 필요할 때만) →
+렌더 → 실행 → HistoryEntry 기록
+```
+
+undo와 redo는 별도의 메커니즘이 아니다. 같은 렌더러를 통해 액션을 렌더링하고 실행하므로,
+되돌린 뒤에도 `/script`는 여전히 의미를 갖는다.
+
+| 액션 | 역액션 | 사전 읽기 필요? |
+|---|---|---|
+| `addSlide(i, spec)` | `deleteSlide(i)` | 불필요 |
+| `deleteSlide(i)` | `addSlide(i, 캡처한 spec)` | **필요** |
+| `updateSlide(i, …)` | `updateSlide(i, 이전 값)` | **필요** |
+| `moveSlide(a → b)` | `moveSlide(b → a)` | 불필요 |
+| `updateSpeakerNotes(i, …)` | `updateSpeakerNotes(i, 이전 노트)` | **필요** |
+| `createPresentation` | 없음 — 되돌릴 수 없음 | — |
+
+여기서 따라 나오는 규칙:
+
+- 덱 전체가 아니라 **영향받는 슬라이드 한 장만** 다시 읽는다.
+- 역액션이 없는 액션은 **히스토리 전체를 비운다**. 이전 항목들이 기술하던 문서가 더 이상
+  존재하지 않으므로, 그 역액션들을 재생하면 지금 열려 있는 문서를 망가뜨린다. 문서를 새로
+  열거나 닫을 때 히스토리를 비우는 것도 같은 이유다.
+- AppleScript가 실제로 성공하지 않으면 아무것도 기록하지 않는다.
+- `deleteSlide`를 되돌리면 `SlideSpec`이 담는 것 — 제목, 본문, 노트 — 이 복원된다. 원래의
+  마스터, 이미지, 도형은 복원되지 **않는다**.
+- Keynoter는 Keynote 안에서 직접 한 편집을 알 수 없으므로 역액션이 낡을 수 있다. undo는
+  현재 슬라이드 수를 기준으로 다시 검증해, 최악의 경우를 AppleScript `-1728` 대신 명확한
+  메시지로 바꾼다.
 
 ---
 
@@ -240,22 +289,26 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 
 **완료 기준:** `keynoter`가 실행되고, 슬래시 명령어를 받아들이며, `/doctor`가 동작한다.
 
-### Phase 2 — Keynote 연동 (현재 단계)
+### Phase 2 — Keynote 연동 (완료)
 `AppleScriptExecutor` · `KeynoteController` · `/create` `/edit` `/open` `/save` `/save-as` `/close`
 
 **완료 기준:** `/create demo`가 `demo.key`를 생성하고, `/status`가 슬라이드 수를 표시한다.
 
-### Phase 3 — 도메인 모델 및 렌더러
+### Phase 3 — 도메인 모델 및 렌더러 (완료)
 `PresentationSpec` · `PresentationAction` · `ValidationEngine` · `AppleScriptRenderer`
-· `History` · `/undo` `/redo` `/script`
+· `History` · `InverseBuilder` · `ActionRunner` · `/undo` `/redo` `/script`
 
 **완료 기준:** 액션을 적용하고, AppleScript로 렌더링하고, 되돌릴 수 있다.
 
-### Phase 4 — AI 통합
+### Phase 4 — AI 통합 (현재 단계)
 `FoundationModelClient` · `PresentationPlanner` · `@Generable` 액션 타입
 · REPL의 자연어 입력을 플래너에 연결
 
 **완료 기준:** 자연어 요청을 입력하면 Keynote에서 슬라이드가 엔드투엔드로 생성/편집된다.
+
+**주의:** Keynote 테마 이름은 지역화되어 있다. 한국어 환경에서 `theme "White"`는 `-1728`로
+실패하고 `theme "흰색"`이 성공한다. 모델이 제시한 영문 테마 이름을 설치된 테마로 매핑하는
+일은 렌더러가 아니라 이 단계의 몫이다.
 
 ### Phase 5 — 다듬기
 진행 상황 표시 · Apple Intelligence를 사용할 수 없을 때의 우아한 성능 저하(graceful degradation)

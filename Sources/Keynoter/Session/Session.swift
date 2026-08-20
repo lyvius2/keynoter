@@ -25,10 +25,12 @@ final class Session {
     private(set) var slideMetadata: [SlideInfo] = []
     private(set) var lastAppleScript: String?
 
+    /// Undo/redo stacks for the active document. Entries pair each applied
+    /// action with the action that reverses it — see `HistoryEntry`.
+    private(set) var history = History()
+
     /// Set by `/exit` (and by EOF on stdin) to end the REPL loop.
     var shouldExit = false
-
-    // Phase 3 adds `undoStack` / `redoStack` here, once `PresentationAction` exists.
 
     var hasDocument: Bool { documentPath != nil }
 
@@ -44,6 +46,10 @@ final class Session {
         self.isModified = false
         self.slideMetadata = []
         self.lastAppleScript = nil
+        // History belongs to a document, not to the process: replaying slide 3's
+        // old text into a different deck is exactly the corruption undo exists
+        // to avoid.
+        self.history.clear()
     }
 
     /// Updates the tracked path in place — used after `/save-as` where the
@@ -65,6 +71,26 @@ final class Session {
         isModified = modified
     }
 
+    // MARK: - History
+
+    func recordHistory(_ entry: HistoryEntry) {
+        history.record(entry)
+    }
+
+    /// Records an action with no inverse, which discards the history — see
+    /// `History.recordIrreversible()`.
+    func recordIrreversibleAction() {
+        history.recordIrreversible()
+    }
+
+    func commitUndo() {
+        history.commitUndo()
+    }
+
+    func commitRedo() {
+        history.commitRedo()
+    }
+
     /// Drops the active document but leaves the REPL running (`/close`).
     func closeDocument() {
         documentPath = nil
@@ -72,5 +98,6 @@ final class Session {
         isModified = false
         slideMetadata = []
         lastAppleScript = nil
+        history.clear()
     }
 }

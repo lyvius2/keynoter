@@ -28,6 +28,29 @@ enum PresentationAction: Equatable, Sendable {
     case updateSpeakerNotes(index: Int, notes: String)
 }
 
+extension PresentationAction {
+
+    /// A short, imperative description for REPL output — "add slide 3".
+    /// Deliberately excludes the text content: `/script` is where the full
+    /// payload is inspected.
+    var summary: String {
+        switch self {
+        case .createPresentation(let title, _):
+            return title.isEmpty ? "create presentation" : "create presentation \"\(title)\""
+        case .addSlide(let index, _):
+            return "add slide \(index)"
+        case .updateSlide(let index, _, _):
+            return "update slide \(index)"
+        case .deleteSlide(let index):
+            return "delete slide \(index)"
+        case .moveSlide(let from, let to):
+            return "move slide \(from) to \(to)"
+        case .updateSpeakerNotes(let index, _):
+            return "update speaker notes on slide \(index)"
+        }
+    }
+}
+
 /// State the validator needs from Session to decide whether an action is safe.
 struct ValidationContext: Equatable, Sendable {
     let slideCount: Int
@@ -40,6 +63,26 @@ enum ValidationError: Error, Equatable {
     case emptyUpdate
     case textTooLong(field: String, limit: Int, actual: Int)
     case invalidCharacter(field: String)
+}
+
+extension ValidationError {
+
+    /// One-line rendering for the REPL, matching `AppleScriptError.userMessage`.
+    var userMessage: String {
+        switch self {
+        case .indexOutOfRange(let index, let allowed):
+            if allowed.isEmpty {
+                return "Slide \(index) does not exist — the document has no slides."
+            }
+            return "Slide \(index) is out of range (the document allows \(allowed.lowerBound)–\(allowed.upperBound - 1))."
+        case .emptyUpdate:
+            return "That update would change nothing."
+        case .textTooLong(let field, let limit, let actual):
+            return "\(field) is \(actual) characters — the limit is \(limit)."
+        case .invalidCharacter(let field):
+            return "\(field) contains a character Keynoter will not send to Keynote."
+        }
+    }
 }
 
 /// Pure validation over `PresentationAction`. Runs before the renderer, so

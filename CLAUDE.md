@@ -75,10 +75,13 @@ Sources/
     │   └── PromptBuilder.swift         — builds system instructions + user prompt
     ├── Domain/
     │   ├── PresentationSpec.swift      — PresentationSpec, SlideSpec, SlideLayout
-    │   └── PresentationAction.swift    — PresentationAction enum + @Generable types + validation
+    │   ├── PresentationAction.swift    — PresentationAction enum + @Generable types + validation
+    │   └── InverseBuilder.swift        — action → the action that reverses it
     ├── Keynote/
     │   ├── KeynoteController.swift     — create/open/save document, read slide metadata
     │   ├── AppleScriptRenderer.swift   — PresentationAction → AppleScript string
+    │   ├── AppleScriptString.swift     — the one escaper for AppleScript literals
+    │   ├── ActionRunner.swift          — validate → snapshot → render → execute → record
     │   └── AppleScriptExecutor.swift   — runs osascript, returns result or error
     ├── Session/
     │   ├── Session.swift               — in-memory session state
@@ -101,9 +104,56 @@ var mode: SessionMode          // .create | .edit
 var isModified: Bool
 var slideMetadata: [SlideInfo] // title, index — synced after each action
 var lastAppleScript: String?
-var undoStack: [PresentationAction]
-var redoStack: [PresentationAction]
+var history: History           // undo/redo stacks of HistoryEntry
 ```
+
+---
+
+## Undo Model
+
+A `PresentationAction` is **not invertible on its own** — `deleteSlide(3)` does
+not carry what slide 3 held. So the inverse is computed *before* the action runs,
+while the old state is still readable, and the pair is what gets stored:
+
+```swift
+struct HistoryEntry {
+    let applied: PresentationAction   // re-run on /redo
+    let inverse: PresentationAction   // run on /undo
+}
+```
+
+`ActionRunner` drives the whole sequence:
+
+```
+validate → read the "before" slide (only if the inverse needs it) →
+render → execute → record HistoryEntry
+```
+
+Undo and redo are not a separate mechanism: they render and execute an action
+through the same renderer, so `/script` stays meaningful afterwards.
+
+| Action | Inverse | Needs a pre-read? |
+|---|---|---|
+| `addSlide(i, spec)` | `deleteSlide(i)` | no |
+| `deleteSlide(i)` | `addSlide(i, captured spec)` | **yes** |
+| `updateSlide(i, …)` | `updateSlide(i, old values)` | **yes** |
+| `moveSlide(a → b)` | `moveSlide(b → a)` | no |
+| `updateSpeakerNotes(i, …)` | `updateSpeakerNotes(i, old notes)` | **yes** |
+| `createPresentation` | none — irreversible | — |
+
+Rules that follow from this:
+
+- Only the **one affected slide** is read back, never the whole deck.
+- An action with no inverse **clears the entire history**: the document the
+  earlier entries described is gone, so replaying their inverses would corrupt
+  whatever is open now. Attaching or closing a document clears it for the same
+  reason.
+- Nothing is recorded unless the AppleScript actually succeeded.
+- Undoing a `deleteSlide` restores title, body and notes — everything `SlideSpec`
+  carries. The original master, images and shapes are **not** recovered.
+- Keynoter cannot see edits made directly inside Keynote, so a stale inverse is
+  possible. Undo re-validates against the current slide count to turn the worst
+  cases into a clear message instead of an AppleScript `-1728`.
 
 ---
 
@@ -238,22 +288,27 @@ escaping of quotes and backslashes in text fields.
 
 **Done when:** `keynoter` launches, accepts slash commands, `/doctor` runs.
 
-### Phase 2 — Keynote Integration (current)
+### Phase 2 — Keynote Integration (done)
 `AppleScriptExecutor` · `KeynoteController` · `/create` `/edit` `/open` `/save` `/save-as` `/close`
 
 **Done when:** `/create demo` produces `demo.key`, `/status` shows slide count.
 
-### Phase 3 — Domain Model & Renderer
+### Phase 3 — Domain Model & Renderer (done)
 `PresentationSpec` · `PresentationAction` · `ValidationEngine` · `AppleScriptRenderer`
-· `History` · `/undo` `/redo` `/script`
+· `History` · `InverseBuilder` · `ActionRunner` · `/undo` `/redo` `/script`
 
 **Done when:** Actions can be applied, rendered to AppleScript, and undone.
 
-### Phase 4 — AI Integration
+### Phase 4 — AI Integration (current)
 `FoundationModelClient` · `PresentationPlanner` · `@Generable` action types
 · Natural-language input wired to planner in REPL
 
 **Done when:** Typing a NL request creates/edits slides in Keynote end-to-end.
+
+**Watch out:** Keynote theme names are localized. On a Korean system
+`theme "White"` fails with `-1728` and `theme "흰색"` succeeds. Mapping a
+model-supplied English theme name onto the installed themes belongs here, not in
+the renderer.
 
 ### Phase 5 — Polish
 Progress display · graceful degradation when Apple Intelligence unavailable

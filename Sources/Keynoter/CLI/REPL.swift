@@ -6,11 +6,13 @@ final class REPL {
 
     private let session: Session
     private let controller: KeynoteController
+    private let runner: ActionRunner
     private let reader = LineReader()
 
     init(session: Session, controller: KeynoteController = KeynoteController()) {
         self.session = session
         self.controller = controller
+        self.runner = ActionRunner(session: session, controller: controller)
     }
 
     func run() async {
@@ -63,13 +65,12 @@ final class REPL {
         case .close:
             await handleClose()
 
-        // Phase 3 — domain model & renderer
         case .undo:
-            notImplemented("/undo", phase: 3)
+            await handleUndo()
         case .redo:
-            notImplemented("/redo", phase: 3)
+            await handleRedo()
         case .script:
-            notImplemented("/script", phase: 3)
+            printScript()
 
         case .status:
             await printStatus()
@@ -97,8 +98,11 @@ final class REPL {
             return
         }
         do {
-            try await controller.createDocument(at: url)
+            let script = try await controller.createDocument(at: url)
             session.attach(documentPath: url, mode: .create)
+            // After attach — attaching resets the script buffer along with the
+            // rest of the previous document's state.
+            session.recordAppleScript(script)
             Console.success("Created \(url.lastPathComponent)")
             await refreshSlides()
         } catch {
@@ -117,8 +121,9 @@ final class REPL {
             return
         }
         do {
-            try await controller.openDocument(at: url)
+            let script = try await controller.openDocument(at: url)
             session.attach(documentPath: url, mode: .edit)
+            session.recordAppleScript(script)
             Console.success("Opened \(url.lastPathComponent)")
             await refreshSlides()
         } catch {
@@ -132,7 +137,7 @@ final class REPL {
             return
         }
         do {
-            try await controller.activate()
+            session.recordAppleScript(try await controller.activate())
         } catch {
             reportError(error)
         }
@@ -144,7 +149,7 @@ final class REPL {
             return
         }
         do {
-            try await controller.saveDocument()
+            session.recordAppleScript(try await controller.saveDocument())
             session.markModified(false)
             Console.success("Saved \(session.documentName ?? "")")
         } catch {
@@ -163,8 +168,9 @@ final class REPL {
             return
         }
         do {
-            try await controller.saveDocumentAs(at: url)
+            let script = try await controller.saveDocumentAs(at: url)
             session.renameDocument(to: url)
+            session.recordAppleScript(script)
             Console.success("Saved as \(url.lastPathComponent)")
         } catch {
             reportError(error)
@@ -184,6 +190,57 @@ final class REPL {
         } catch {
             reportError(error)
         }
+    }
+
+    // MARK: - History commands
+
+    private func handleUndo() async {
+        guard requireDocument() else { return }
+        guard session.history.canUndo else {
+            Console.warning("Nothing to undo.")
+            return
+        }
+        do {
+            let action = try await runner.undo()
+            Console.success("Undid: \(action.summary)")
+            await refreshSlides()
+        } catch {
+            reportError(error)
+        }
+    }
+
+    private func handleRedo() async {
+        guard requireDocument() else { return }
+        guard session.history.canRedo else {
+            Console.warning("Nothing to redo.")
+            return
+        }
+        do {
+            let action = try await runner.redo()
+            Console.success("Redid: \(action.summary)")
+            await refreshSlides()
+        } catch {
+            reportError(error)
+        }
+    }
+
+    /// Prints the AppleScript from the last operation — rendered by Keynoter,
+    /// never text a model produced.
+    private func printScript() {
+        guard let script = session.lastAppleScript else {
+            Console.warning("No AppleScript yet — run a command that talks to Keynote first.")
+            return
+        }
+        Console.heading("AppleScript")
+        Console.line(script)
+    }
+
+    private func requireDocument() -> Bool {
+        guard session.hasDocument else {
+            Console.warning("No active document. Use /create <name> or /edit <path>.")
+            return false
+        }
+        return true
     }
 
     private func refreshSlides() async {
@@ -209,10 +266,6 @@ final class REPL {
         Console.info("Anything that does not start with '/' is sent to the presentation planner.")
     }
 
-    private func notImplemented(_ command: String, phase: Int) {
-        Console.warning("\(command) is not implemented yet (Phase \(phase)).")
-    }
-
     private func printStatus() async {
         // Refresh from Keynote first so a slide count edited outside Keynoter
         // still shows up. Failure is silent — the cached value is still shown.
@@ -231,6 +284,7 @@ final class REPL {
         Console.line("  Mode:     \(session.mode.rawValue)")
         Console.line("  Slides:   \(session.slideCount)")
         Console.line("  Modified: \(session.isModified ? "yes" : "no")")
+        Console.line("  Undo:     \(session.history.undoDepth) (redo: \(session.history.redoDepth))")
     }
 
     private func printDoctor() {
@@ -263,6 +317,8 @@ final class REPL {
 
     private func errorMessage(_ error: Error) -> String {
         if let ae = error as? AppleScriptError { return ae.userMessage }
+        if let re = error as? ActionRunnerError { return re.userMessage }
+        if let ve = error as? ValidationError { return ve.userMessage }
         return "\(error)"
     }
 }

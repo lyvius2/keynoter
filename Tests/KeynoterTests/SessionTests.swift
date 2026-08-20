@@ -17,6 +17,8 @@ struct SessionTests {
         #expect(session.isModified == false)
         #expect(session.slideCount == 0)
         #expect(session.lastAppleScript == nil)
+        #expect(session.history.canUndo == false)
+        #expect(session.history.canRedo == false)
         #expect(session.shouldExit == false)
     }
 
@@ -45,6 +47,62 @@ struct SessionTests {
         #expect(session.slideCount == 0)
         #expect(session.lastAppleScript == nil)
         #expect(session.isModified == false)
+    }
+
+    @Test("History belongs to a document, so attaching a new one discards it")
+    func attachClearsHistory() {
+        let session = Session()
+        session.attach(documentPath: deck, mode: .edit)
+        session.recordHistory(
+            HistoryEntry(applied: .deleteSlide(index: 1), inverse: .addSlide(index: 1, spec: SlideSpec()))
+        )
+
+        session.attach(documentPath: URL(fileURLWithPath: "/tmp/other.key"), mode: .edit)
+
+        #expect(session.history.canUndo == false)
+    }
+
+    @Test("Recording, undoing and redoing move entries between the stacks")
+    func historyRoundTrip() {
+        let session = Session()
+        let entry = HistoryEntry(
+            applied: .addSlide(index: 1, spec: SlideSpec(title: "Intro")),
+            inverse: .deleteSlide(index: 1)
+        )
+        session.recordHistory(entry)
+        #expect(session.history.undoDepth == 1)
+
+        session.commitUndo()
+        #expect(session.history.canUndo == false)
+        #expect(session.history.nextRedo == entry)
+
+        session.commitRedo()
+        #expect(session.history.nextUndo == entry)
+    }
+
+    @Test("An irreversible action clears the history")
+    func irreversibleActionClearsHistory() {
+        let session = Session()
+        session.recordHistory(
+            HistoryEntry(applied: .moveSlide(from: 1, to: 2), inverse: .moveSlide(from: 2, to: 1))
+        )
+
+        session.recordIrreversibleAction()
+
+        #expect(session.history.canUndo == false)
+    }
+
+    @Test("Closing the document discards the history")
+    func closeClearsHistory() {
+        let session = Session()
+        session.attach(documentPath: deck, mode: .edit)
+        session.recordHistory(
+            HistoryEntry(applied: .moveSlide(from: 1, to: 2), inverse: .moveSlide(from: 2, to: 1))
+        )
+
+        session.closeDocument()
+
+        #expect(session.history.canUndo == false)
     }
 
     @Test("Slide metadata drives the slide count")

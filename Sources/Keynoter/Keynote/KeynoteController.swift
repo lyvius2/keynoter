@@ -18,41 +18,76 @@ struct KeynoteController: Sendable {
 
     // MARK: - Operations
 
+    /// Every mutating operation returns the AppleScript it ran, so the caller
+    /// can hand it to `Session.recordAppleScript(_:)` and `/script` shows what
+    /// actually executed rather than a rebuilt approximation.
+
     /// Creates a new empty document and saves it at `path`.
-    func createDocument(at path: URL) async throws {
-        _ = try await executor.run(Self.createScript(path: path.path))
+    @discardableResult
+    func createDocument(at path: URL) async throws -> String {
+        try await run(Self.createScript(path: path.path))
     }
 
     /// Opens the document at `path`.
-    func openDocument(at path: URL) async throws {
-        _ = try await executor.run(Self.openScript(path: path.path))
+    @discardableResult
+    func openDocument(at path: URL) async throws -> String {
+        try await run(Self.openScript(path: path.path))
     }
 
     /// Saves the front document in place.
-    func saveDocument() async throws {
-        _ = try await executor.run(Self.saveScript())
+    @discardableResult
+    func saveDocument() async throws -> String {
+        try await run(Self.saveScript())
     }
 
     /// Saves the front document to a new path.
-    func saveDocumentAs(at path: URL) async throws {
-        _ = try await executor.run(Self.saveAsScript(path: path.path))
+    @discardableResult
+    func saveDocumentAs(at path: URL) async throws -> String {
+        try await run(Self.saveAsScript(path: path.path))
     }
 
     /// Closes the front document. `save == true` writes pending changes,
     /// `false` discards them.
-    func closeDocument(save: Bool) async throws {
-        _ = try await executor.run(Self.closeScript(save: save))
+    @discardableResult
+    func closeDocument(save: Bool) async throws -> String {
+        try await run(Self.closeScript(save: save))
     }
 
     /// Brings Keynote to the foreground.
-    func activate() async throws {
-        _ = try await executor.run(Self.activateScript())
+    @discardableResult
+    func activate() async throws -> String {
+        try await run(Self.activateScript())
+    }
+
+    /// Runs a script `AppleScriptRenderer` produced and returns the same script.
+    /// Routing rendered actions through the controller keeps every Apple Event
+    /// the app sends behind one type.
+    @discardableResult
+    func execute(_ script: String) async throws -> String {
+        try await run(script)
     }
 
     /// Reads the front document's slides in order, one `SlideInfo` per slide.
     func readSlideMetadata() async throws -> [SlideInfo] {
         let output = try await executor.run(Self.readSlidesScript())
         return Self.parseSlideMetadata(output)
+    }
+
+    /// Reads one slide's full text content back out of the front document.
+    ///
+    /// Used to capture the "before" state that `InverseBuilder` needs to make
+    /// a destructive action undoable.
+    func readSlide(at index: Int) async throws -> SlideSpec {
+        let output = try await executor.run(Self.readSlideScript(index: index))
+        return Self.parseSlide(output)
+    }
+
+    /// Runs `script` and returns it unchanged, discarding stdout. Every
+    /// mutating operation above is this plus a script builder.
+    @discardableResult
+    private func run(_ script: String) async throws -> String {
+        _ = try await executor.run(script)
+        return script
     }
 
     // MARK: - Script builders (internal for tests)
@@ -133,6 +168,42 @@ struct KeynoteController: Sendable {
         """
     }
 
+    /// Reads title, body, presenter notes and placeholder presence for one slide.
+    ///
+    /// Fields are joined with ASCII unit separator (0x1F) rather than newlines:
+    /// titles, body text and notes can all contain line breaks, which would make
+    /// `readSlidesScript()`'s line-per-slide format ambiguous here.
+    ///
+    /// The two leading flags record whether the title / body placeholder exists
+    /// at all. A missing placeholder and an empty one both read back as "",
+    /// and the difference matters — it is how `parseSlide(_:)` infers the
+    /// layout, and therefore which placeholders a restored slide may write to.
+    static func readSlideScript(index: Int) -> String {
+        """
+        tell application "Keynote"
+            set sep to ASCII character 31
+            set theSlide to slide \(index) of front document
+            set titleFlag to "0"
+            set slideTitle to ""
+            try
+                set slideTitle to object text of default title item of theSlide
+                set titleFlag to "1"
+            end try
+            set bodyFlag to "0"
+            set slideBody to ""
+            try
+                set slideBody to object text of default body item of theSlide
+                set bodyFlag to "1"
+            end try
+            set slideNotes to ""
+            try
+                set slideNotes to presenter notes of theSlide
+            end try
+            return titleFlag & sep & bodyFlag & sep & slideTitle & sep & slideBody & sep & slideNotes
+        end tell
+        """
+    }
+
     // MARK: - Parsing / escaping (internal for tests)
 
     /// Parses the output of `readSlidesScript()`: one slide per line, index
@@ -150,6 +221,50 @@ struct KeynoteController: Sendable {
             result.append(SlideInfo(index: index, title: title))
         }
         return result
+    }
+
+    /// Field separator used by `readSlideScript(index:)`.
+    static let slideFieldSeparator: Character = "\u{1F}"
+
+    /// Parses the output of `readSlideScript(index:)`.
+    ///
+    /// Malformed output yields a blank spec rather than throwing: the caller
+    /// uses this to build an undo step, and an empty spec makes that undo
+    /// obviously wrong rather than silently half-right.
+    static func parseSlide(_ output: String) -> SlideSpec {
+        let parts = output.split(
+            separator: slideFieldSeparator,
+            maxSplits: 4,
+            omittingEmptySubsequences: false
+        )
+        guard parts.count == 5 else { return SlideSpec(layout: .blank) }
+
+        let hasTitle = parts[0] == "1"
+        let hasBody = parts[1] == "1"
+        let notes = String(parts[4])
+
+        return SlideSpec(
+            layout: hasTitle ? (hasBody ? .titleAndBody : .title) : .blank,
+            title: hasTitle ? String(parts[2]) : nil,
+            body: hasBody ? parseBodyText(String(parts[3])) : [],
+            speakerNotes: notes.isEmpty ? nil : notes
+        )
+    }
+
+    /// Splits a body placeholder's text back into bullets — the inverse of the
+    /// renderer joining them with newlines. Keynote returns CR, LF or CRLF
+    /// depending on how the text was entered, so any newline splits.
+    /// Trailing blank lines are dropped; interior ones are kept, because an
+    /// empty bullet in the middle of a list was deliberate.
+    static func parseBodyText(_ text: String) -> [String] {
+        guard !text.isEmpty else { return [] }
+        var lines = text
+            .split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+            .map(String.init)
+        while lines.last?.isEmpty == true {
+            lines.removeLast()
+        }
+        return lines
     }
 
     /// Escapes a string for safe interpolation into an AppleScript `"..."`

@@ -128,6 +128,26 @@ Keynote
 이 구조는 모델의 추론을 애플리케이션 실행과 분리하고, 생성된 자동화를
 `/script`를 통해 확인할 수 있게 합니다.
 
+## 되돌리기 (Undo)
+
+구조화된 액션은 스스로를 되돌릴 수 없습니다 — `슬라이드 3 삭제`는 슬라이드 3이
+무엇을 담고 있었는지 알지 못합니다. 그래서 Keynoter는 액션을 실행하기 전, 아직
+이전 상태를 읽을 수 있을 때 바꾸려는 슬라이드 한 장을 읽어 두고 그것을 되돌리는
+액션을 만듭니다. 둘은 함께 저장됩니다:
+
+``` text
+delete slide 3   ← 요청한 것          (/redo가 다시 실행)
+add slide 3 …    ← 되돌리는 것        (/undo가 실행)
+```
+
+따라서 되돌리기 역시 같은 렌더러를 거치는 하나의 액션일 뿐이며, 되돌린 뒤에도
+`/script`가 의미 있는 결과를 보여주는 이유가 여기에 있습니다.
+
+알아 둘 만한 두 가지 한계가 있습니다. 삭제를 되돌리면 슬라이드의 제목, 본문,
+노트는 복원되지만 마스터, 이미지, 도형은 복원되지 않습니다. 또한 Keynoter는
+Keynote에서 직접 한 편집을 알 수 없으므로, 양쪽을 오가며 작업하면 되돌리기가
+낡을 수 있습니다.
+
 ## 기술
 
 -   **플랫폼:** macOS
@@ -144,14 +164,17 @@ macOS 26 SDK에서 제공되며, Command Line Tools만으로는 이 패키지를
 
 ## 프로젝트 현황
 
-Keynoter는 **초기 개발 단계**에 있습니다. 대화형 셸은 현재 동작합니다.
-슬래시 명령어는 REPL에서 파싱되고 디스패치되며, `/doctor`는 로컬 실행
-환경을 점검하고, Keynote를 조작하는 여섯 개의 명령어
+Keynoter는 **초기 개발 단계**에 있으며, 언어 모델 아래쪽 계층은 모두 자리를
+잡았습니다. 슬래시 명령어는 REPL에서 파싱되고 디스패치되며, `/doctor`는 로컬
+실행 환경을 점검하고, Keynote를 조작하는 여섯 개의 명령어
 (`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`)는 AppleScript로
 Keynote와 통신합니다. `/status`는 활성 문서에서 슬라이드 메타데이터를
-실시간으로 읽어 옵니다. 아직 남은 것은 `PresentationAction` 계층,
-`/undo`/`/redo`, `/script`, 그리고 자연어 입력을 구조화된 슬라이드 편집으로
-바꾸는 Foundation Models 연동입니다.
+실시간으로 읽어 옵니다.
+
+액션 파이프라인은 완성되었습니다. 모든 `PresentationAction`은 검증을 거쳐
+고정된 AppleScript 템플릿으로 렌더링되고, 실행된 뒤 undo 스택에 기록되며,
+`/undo`, `/redo`, `/script`가 여기에 연결되어 있습니다. 남은 것은 자연어 입력을
+이 액션들로 바꾸는 Foundation Models 연동입니다.
 
 구현 마일스톤:
 
@@ -159,10 +182,10 @@ Keynote와 통신합니다. `/status`는 활성 문서에서 슬라이드 메타
 -   [x] 환경 진단 (`/doctor`, `/status`)
 -   [x] Keynote 문서 생성 및 편집
 -   [x] 저장/열기/세션 관리
--   [ ] 구조화된 `PresentationAction` 생성 및 검증
--   [ ] 결정론적 AppleScript 렌더링
--   [ ] undo/redo
--   [ ] AppleScript 확인 (`/script`)
+-   [x] 구조화된 `PresentationAction` 생성 및 검증
+-   [x] 결정론적 AppleScript 렌더링
+-   [x] undo/redo
+-   [x] AppleScript 확인 (`/script`)
 -   [ ] Foundation Models 통합
 
 PDF 및 PowerPoint 내보내기, 더 풍부한 레이아웃, 다이어그램, 이미지, 테마,
@@ -195,10 +218,10 @@ keynoter/
 │   └── Keynoter/
 │       ├── main.swift
 │       ├── CLI/                 — REPL, 파싱, 콘솔 출력
-│       ├── Session/             — 세션 상태
-│       ├── Diagnostics/         — /doctor 점검               (Phase 1)
-│       ├── Keynote/             — AppleScript 실행           (Phase 2)
-│       ├── Domain/              — 액션, 검증                 (Phase 3)
+│       ├── Session/             — 세션 상태, undo/redo 히스토리
+│       ├── Diagnostics/         — /doctor 점검
+│       ├── Keynote/             — AppleScript 렌더링 및 실행
+│       ├── Domain/              — 액션, 검증, 역액션
 │       └── AI/                  — Foundation Models 클라이언트 (Phase 4)
 └── Tests/
     └── KeynoterTests/           — Swift Testing 스위트
@@ -211,14 +234,12 @@ keynoter/
 
 ## 다음 단계
 
-Phase 3 — `PresentationAction` 도메인 계약 정의:
+Phase 4 — Foundation Models 통합:
 
--   액션 타입
--   Foundation Models 구조화 출력
--   검증 규칙
--   AppleScript 매핑
--   undo/redo 동작
--   오류/결과 처리
+-   `@Generable` 액션 타입을 산출하는 `LanguageModelSession`
+-   자연어 요청 하나를 검증된 `PresentationAction` 시퀀스로 바꾸는 플래너
+-   REPL의 자연어 입력 연결
+-   모델이 제시한 테마 이름을 로컬에 설치된(그리고 지역화된) Keynote 테마로 매핑
 
 전체 단계 계획은 [`CLAUDE_KR.md`](./CLAUDE_KR.md)에 있습니다.
 

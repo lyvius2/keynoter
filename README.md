@@ -130,6 +130,26 @@ Keynote
 This keeps model reasoning separate from application execution and makes
 generated automation inspectable through `/script`.
 
+## Undo
+
+A structured action cannot reverse itself --- `delete slide 3` does not
+carry what slide 3 held. So before an action runs, while the old state is
+still readable, Keynoter reads back the one slide it is about to change
+and builds the action that puts it back. Both are stored together:
+
+``` text
+delete slide 3   ← what you asked for      (replayed by /redo)
+add slide 3 …    ← what puts it back       (replayed by /undo)
+```
+
+Undo is therefore just another action through the same renderer, which is
+why `/script` still shows you something meaningful after one.
+
+Two limits worth knowing: undoing a deletion restores the slide's title,
+body and notes but not its master, images or shapes; and Keynoter cannot
+see edits you make directly inside Keynote, so undo can go stale if you
+work in both places at once.
+
 ## Technology
 
 -   **Platform:** macOS
@@ -146,14 +166,18 @@ enough to build the package. It does not need to be your primary editor.
 
 ## Project Status
 
-Keynoter is in **early development**. The interactive shell runs today.
-Slash commands parse and dispatch through the REPL, `/doctor` reports on
-the local environment, and the six Keynote-driving commands
-(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk to
-Keynote through AppleScript. `/status` reads live slide metadata back
-from the front document. What is still missing is the `PresentationAction`
-layer, `/undo`/`/redo`, `/script`, and the Foundation Models plumbing
-that turns natural-language input into structured slide edits.
+Keynoter is in **early development**, and everything below the language
+model is now in place. Slash commands parse and dispatch through the REPL,
+`/doctor` reports on the local environment, and the six Keynote-driving
+commands (`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk
+to Keynote through AppleScript. `/status` reads live slide metadata back
+from the front document.
+
+The action pipeline is complete: every `PresentationAction` is validated,
+rendered to a fixed AppleScript template, executed, and recorded on an
+undo stack, with `/undo`, `/redo`, and `/script` wired to it. What remains
+is the Foundation Models plumbing that turns natural-language input into
+those actions.
 
 Implementation milestones:
 
@@ -161,10 +185,10 @@ Implementation milestones:
 -   [x] environment diagnostics (`/doctor`, `/status`)
 -   [x] Keynote document creation and editing
 -   [x] save/open/session management
--   [ ] structured `PresentationAction` generation and validation
--   [ ] deterministic AppleScript rendering
--   [ ] undo/redo
--   [ ] AppleScript inspection (`/script`)
+-   [x] structured `PresentationAction` generation and validation
+-   [x] deterministic AppleScript rendering
+-   [x] undo/redo
+-   [x] AppleScript inspection (`/script`)
 -   [ ] Foundation Models integration
 
 PDF and PowerPoint export, richer layouts, diagrams, images, themes, and
@@ -197,10 +221,10 @@ keynoter/
 │   └── Keynoter/
 │       ├── main.swift
 │       ├── CLI/                 — REPL, parsing, console output
-│       ├── Session/             — session state
-│       ├── Diagnostics/         — /doctor checks              (Phase 1)
-│       ├── Keynote/             — AppleScript execution       (Phase 2)
-│       ├── Domain/              — actions, validation         (Phase 3)
+│       ├── Session/             — session state, undo/redo history
+│       ├── Diagnostics/         — /doctor checks
+│       ├── Keynote/             — AppleScript rendering and execution
+│       ├── Domain/              — actions, validation, inverses
 │       └── AI/                  — Foundation Models client    (Phase 4)
 └── Tests/
     └── KeynoterTests/           — Swift Testing suites
@@ -214,14 +238,14 @@ decisions, read:
 
 ## Planned Next Step
 
-Phase 3 --- the `PresentationAction` domain contract:
+Phase 4 --- Foundation Models integration:
 
--   action types;
--   Foundation Models structured output;
--   validation rules;
--   AppleScript mappings;
--   undo/redo behavior;
--   error/result handling.
+-   a `LanguageModelSession` producing `@Generable` action types;
+-   a planner that turns one natural-language request into a sequence of
+    validated `PresentationAction`s;
+-   natural-language input wired into the REPL;
+-   mapping model-supplied theme names onto the locally installed
+    (and localized) Keynote themes.
 
 The full phase plan lives in [`CLAUDE.md`](./CLAUDE.md).
 
