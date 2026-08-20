@@ -54,9 +54,10 @@ enum AppleScriptRenderer {
     ///
     /// `theme` is passed through verbatim, and **Keynote theme names are
     /// localized**: on a Korean system `theme "White"` fails with -1728 while
-    /// `theme "흰색"` succeeds. Mapping a model-supplied English name onto the
-    /// installed themes belongs upstream (Phase 4), not here — the renderer
-    /// only escapes.
+    /// `theme "흰색"` succeeds. No model-supplied name reaches here today — the
+    /// planner cannot emit `createPresentation` — so mapping English names onto
+    /// the installed themes becomes real work only when a caller starts passing
+    /// one. The renderer only escapes.
     private static func renderCreatePresentation(title: String, theme: String?) -> String {
         var make = "set newDoc to make new document"
         if let theme {

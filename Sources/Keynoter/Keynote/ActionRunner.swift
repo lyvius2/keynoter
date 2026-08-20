@@ -20,9 +20,9 @@ enum ActionRunnerError: Error, Equatable {
 /// and the rule that only the renderer produces AppleScript still holds.
 ///
 /// Deliberately does *not* refresh `Session.slideMetadata`. Reading the deck
-/// back is a per-command decision the REPL already makes (and reports failures
-/// for); doing it here would hide an Apple Event behind every action and cost a
-/// full re-read per action once Phase 4 applies plans in batches.
+/// back is the REPL's call — it already does so after every command and reports
+/// failures — and hiding an Apple Event behind every action would make the cost
+/// invisible at the point where plans apply several actions in a row.
 @MainActor
 struct ActionRunner {
 

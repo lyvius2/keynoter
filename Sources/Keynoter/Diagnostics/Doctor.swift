@@ -219,29 +219,21 @@ enum Doctor {
         case .available:
             return .available
         case .unavailable(let reason):
-            return .unavailable(reason: describe(reason))
+            // Shared with the planner rather than worded twice: two independent
+            // explanations of the same three states is how they drift apart.
+            return .unavailable(reason: FoundationModelClient.describe(reason))
         @unknown default:
             return .unavailable(reason: "SystemLanguageModel is not available")
         }
         #else
+        // Currently unreachable: `AI/` imports FoundationModels unconditionally,
+        // so a toolchain without the framework fails to build the target long
+        // before /doctor runs. Kept so the check still has an honest answer if
+        // that import ever becomes conditional.
         return .notLinked
         #endif
     }
 
-    #if canImport(FoundationModels)
-    private static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
-        switch reason {
-        case .deviceNotEligible:
-            return "device is not eligible for Apple Intelligence"
-        case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence is off — enable it in System Settings"
-        case .modelNotReady:
-            return "the on-device model is still downloading"
-        @unknown default:
-            return "SystemLanguageModel is not available"
-        }
-    }
-    #endif
 
     private static func probeAutomation() -> AutomationState {
         #if canImport(ApplicationServices)

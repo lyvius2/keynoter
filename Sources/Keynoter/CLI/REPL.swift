@@ -238,13 +238,19 @@ final class REPL {
 
     private func handleClose() async {
         guard let document = activeDocument() else { return }
+        let name = session.documentName ?? ""
         do {
             try await controller.closeDocument(document, save: true)
-            let name = session.documentName ?? ""
             session.closeDocument()
             Console.success("Closed \(name)")
         } catch {
-            reportError(error)
+            // Detach regardless. The session is Keynoter's own state, so ending
+            // it has to be possible even when Keynote will not cooperate — and
+            // the common cause is that the user already closed the document in
+            // Keynote, which leaves /save, /close and /create all refusing and
+            // no way out but quitting.
+            session.closeDocument()
+            Console.warning("Ended the session for \(name), but Keynote reported: \(errorMessage(error))")
         }
     }
 

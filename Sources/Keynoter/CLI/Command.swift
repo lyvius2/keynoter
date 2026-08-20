@@ -49,7 +49,7 @@ extension Command {
         CommandSpec(keyword: "status", argument: nil, summary: "Show session state"),
         CommandSpec(keyword: "open", argument: nil, summary: "Bring the active document to the foreground"),
         CommandSpec(keyword: "save", argument: nil, summary: "Save the active document"),
-        CommandSpec(keyword: "save-as", argument: "<name>", summary: "Save a copy under a new name"),
+        CommandSpec(keyword: "save-as", argument: "<name>", summary: "Write a copy and continue editing it"),
         CommandSpec(keyword: "undo", argument: nil, summary: "Revert the last Keynoter-driven action"),
         CommandSpec(keyword: "redo", argument: nil, summary: "Reapply the last undone action"),
         CommandSpec(keyword: "script", argument: nil, summary: "Print the AppleScript from the last operation"),
