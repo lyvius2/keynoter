@@ -153,13 +153,9 @@ struct KeynoteController: Sendable {
     }
 
     /// Escapes a string for safe interpolation into an AppleScript `"..."`
-    /// literal. Backslash must be handled first; the other replacements must
-    /// not re-escape backslashes we just wrote.
+    /// literal. Forwards to `AppleScriptString`, which `AppleScriptRenderer`
+    /// also uses — there is one escaper in the project, not two.
     static func escapeAppleScriptString(_ s: String) -> String {
-        s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .replacingOccurrences(of: "\t", with: "\\t")
+        AppleScriptString.escape(s)
     }
 }
