@@ -2,6 +2,11 @@ import Foundation
 import Testing
 @testable import Keynoter
 
+/// The document every renderer test targets. A fixed id keeps the pinned
+/// scripts byte-stable.
+private let deck = DocumentRef(id: "TEST-DOC-ID")
+private let deckSpecifier = "document id \"TEST-DOC-ID\""
+
 @Suite("AppleScriptRenderer — createPresentation")
 struct AppleScriptRendererCreatePresentationTests {
 
@@ -15,7 +20,7 @@ struct AppleScriptRendererCreatePresentationTests {
             end tell
         end tell
         """
-        #expect(AppleScriptRenderer.render(.createPresentation(title: "Q3 Review", theme: nil)) == expected)
+        #expect(AppleScriptRenderer.render(.createPresentation(title: "Q3 Review", theme: nil), in: deck) == expected)
     }
 
     @Test("with a theme, names it in the document properties")
@@ -29,7 +34,7 @@ struct AppleScriptRendererCreatePresentationTests {
         end tell
         """
         let action = PresentationAction.createPresentation(title: "Q3 Review", theme: "Modern Portfolio")
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 
     @Test("an empty title leaves the theme's placeholder alone")
@@ -39,7 +44,7 @@ struct AppleScriptRendererCreatePresentationTests {
             set newDoc to make new document
         end tell
         """
-        #expect(AppleScriptRenderer.render(.createPresentation(title: "", theme: nil)) == expected)
+        #expect(AppleScriptRenderer.render(.createPresentation(title: "", theme: nil), in: deck) == expected)
     }
 }
 
@@ -51,14 +56,14 @@ struct AppleScriptRendererAddSlideTests {
         let spec = SlideSpec(layout: .titleAndBody, title: "Agenda", body: ["Scope", "Timeline"])
         let expected = """
         tell application "Keynote"
-            set newSlide to make new slide at after slide 2 of document 1
+            set newSlide to make new slide at after slide 2 of \(deckSpecifier)
             tell newSlide
                 set object text of default title item to "Agenda"
                 set object text of default body item to "Scope\\nTimeline"
             end tell
         end tell
         """
-        #expect(AppleScriptRenderer.render(.addSlide(index: 3, spec: spec)) == expected)
+        #expect(AppleScriptRenderer.render(.addSlide(index: 3, spec: spec), in: deck) == expected)
     }
 
     @Test("index 1 inserts at the beginning, which works on an empty document")
@@ -66,19 +71,19 @@ struct AppleScriptRendererAddSlideTests {
         let spec = SlideSpec(layout: .title, title: "Keynoter")
         let expected = """
         tell application "Keynote"
-            set newSlide to make new slide at beginning of document 1
+            set newSlide to make new slide at beginning of \(deckSpecifier)
             tell newSlide
                 set object text of default title item to "Keynoter"
             end tell
         end tell
         """
-        #expect(AppleScriptRenderer.render(.addSlide(index: 1, spec: spec)) == expected)
+        #expect(AppleScriptRenderer.render(.addSlide(index: 1, spec: spec), in: deck) == expected)
     }
 
     @Test("bullets join with newlines into the body placeholder")
     func bulletsJoinWithNewlines() {
         let spec = SlideSpec(layout: .titleAndBody, title: "Steps", body: ["One", "Two", "Three"])
-        let rendered = AppleScriptRenderer.render(.addSlide(index: 2, spec: spec))
+        let rendered = AppleScriptRenderer.render(.addSlide(index: 2, spec: spec), in: deck)
         #expect(rendered.contains(#"set object text of default body item to "One\nTwo\nThree""#))
     }
 
@@ -87,14 +92,14 @@ struct AppleScriptRendererAddSlideTests {
         let spec = SlideSpec(layout: .title, title: "Intro", speakerNotes: "Pause here.")
         let expected = """
         tell application "Keynote"
-            set newSlide to make new slide at after slide 1 of document 1
+            set newSlide to make new slide at after slide 1 of \(deckSpecifier)
             tell newSlide
                 set object text of default title item to "Intro"
                 set presenter notes to "Pause here."
             end tell
         end tell
         """
-        #expect(AppleScriptRenderer.render(.addSlide(index: 2, spec: spec)) == expected)
+        #expect(AppleScriptRenderer.render(.addSlide(index: 2, spec: spec), in: deck) == expected)
     }
 
     @Test("a blank layout writes no placeholders")
@@ -102,16 +107,16 @@ struct AppleScriptRendererAddSlideTests {
         let spec = SlideSpec(layout: .blank)
         let expected = """
         tell application "Keynote"
-            set newSlide to make new slide at after slide 4 of document 1
+            set newSlide to make new slide at after slide 4 of \(deckSpecifier)
         end tell
         """
-        #expect(AppleScriptRenderer.render(.addSlide(index: 5, spec: spec)) == expected)
+        #expect(AppleScriptRenderer.render(.addSlide(index: 5, spec: spec), in: deck) == expected)
     }
 
     @Test("a blank layout ignores title and body even when the spec carries them")
     func blankLayoutIgnoresContent() {
         let spec = SlideSpec(layout: .blank, title: "Ignored", body: ["Also ignored"])
-        let rendered = AppleScriptRenderer.render(.addSlide(index: 2, spec: spec))
+        let rendered = AppleScriptRenderer.render(.addSlide(index: 2, spec: spec), in: deck)
         #expect(!rendered.contains("Ignored"))
         #expect(!rendered.contains("default body item"))
     }
@@ -119,7 +124,7 @@ struct AppleScriptRendererAddSlideTests {
     @Test("a title layout ignores body items")
     func titleLayoutIgnoresBody() {
         let spec = SlideSpec(layout: .title, title: "Section", body: ["Dropped"])
-        let rendered = AppleScriptRenderer.render(.addSlide(index: 2, spec: spec))
+        let rendered = AppleScriptRenderer.render(.addSlide(index: 2, spec: spec), in: deck)
         #expect(rendered.contains(#"default title item to "Section""#))
         #expect(!rendered.contains("default body item"))
     }
@@ -129,10 +134,10 @@ struct AppleScriptRendererAddSlideTests {
         let spec = SlideSpec(layout: .titleAndBody, title: "", body: [], speakerNotes: "")
         let expected = """
         tell application "Keynote"
-            set newSlide to make new slide at after slide 1 of document 1
+            set newSlide to make new slide at after slide 1 of \(deckSpecifier)
         end tell
         """
-        #expect(AppleScriptRenderer.render(.addSlide(index: 2, spec: spec)) == expected)
+        #expect(AppleScriptRenderer.render(.addSlide(index: 2, spec: spec), in: deck) == expected)
     }
 }
 
@@ -143,53 +148,53 @@ struct AppleScriptRendererUpdateSlideTests {
     func bothFields() {
         let expected = """
         tell application "Keynote"
-            tell slide 3 of document 1
+            tell slide 3 of \(deckSpecifier)
                 set object text of default title item to "Results"
                 set object text of default body item to "Up 12%"
             end tell
         end tell
         """
         let action = PresentationAction.updateSlide(index: 3, title: "Results", body: ["Up 12%"])
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 
     @Test("a nil field is left alone")
     func nilFieldIsSkipped() {
         let expected = """
         tell application "Keynote"
-            tell slide 2 of document 1
+            tell slide 2 of \(deckSpecifier)
                 set object text of default title item to "Renamed"
             end tell
         end tell
         """
         let action = PresentationAction.updateSlide(index: 2, title: "Renamed", body: nil)
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 
     @Test("an empty body clears the placeholder rather than skipping it")
     func emptyBodyClears() {
         let expected = """
         tell application "Keynote"
-            tell slide 2 of document 1
+            tell slide 2 of \(deckSpecifier)
                 set object text of default body item to ""
             end tell
         end tell
         """
         let action = PresentationAction.updateSlide(index: 2, title: nil, body: [])
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 
     @Test("an empty title clears the placeholder rather than skipping it")
     func emptyTitleClears() {
         let expected = """
         tell application "Keynote"
-            tell slide 2 of document 1
+            tell slide 2 of \(deckSpecifier)
                 set object text of default title item to ""
             end tell
         end tell
         """
         let action = PresentationAction.updateSlide(index: 2, title: "", body: nil)
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 }
 
@@ -200,30 +205,30 @@ struct AppleScriptRendererRemainingActionTests {
     func deleteSlide() {
         let expected = """
         tell application "Keynote"
-            delete slide 4 of document 1
+            delete slide 4 of \(deckSpecifier)
         end tell
         """
-        #expect(AppleScriptRenderer.render(.deleteSlide(index: 4)) == expected)
+        #expect(AppleScriptRenderer.render(.deleteSlide(index: 4), in: deck) == expected)
     }
 
     @Test("moving down the deck lands after the destination slide")
     func moveDown() {
         let expected = """
         tell application "Keynote"
-            move slide 2 of document 1 to after slide 5 of document 1
+            move slide 2 of \(deckSpecifier) to after slide 5 of \(deckSpecifier)
         end tell
         """
-        #expect(AppleScriptRenderer.render(.moveSlide(from: 2, to: 5)) == expected)
+        #expect(AppleScriptRenderer.render(.moveSlide(from: 2, to: 5), in: deck) == expected)
     }
 
     @Test("moving up the deck lands before the destination slide")
     func moveUp() {
         let expected = """
         tell application "Keynote"
-            move slide 5 of document 1 to before slide 2 of document 1
+            move slide 5 of \(deckSpecifier) to before slide 2 of \(deckSpecifier)
         end tell
         """
-        #expect(AppleScriptRenderer.render(.moveSlide(from: 5, to: 2)) == expected)
+        #expect(AppleScriptRenderer.render(.moveSlide(from: 5, to: 2), in: deck) == expected)
     }
 
     @Test("moving a slide onto itself renders a no-op")
@@ -233,28 +238,28 @@ struct AppleScriptRendererRemainingActionTests {
             -- slide 3 is already at position 3; nothing to do
         end tell
         """
-        #expect(AppleScriptRenderer.render(.moveSlide(from: 3, to: 3)) == expected)
+        #expect(AppleScriptRenderer.render(.moveSlide(from: 3, to: 3), in: deck) == expected)
     }
 
     @Test("updateSpeakerNotes pins its exact AppleScript")
     func updateSpeakerNotes() {
         let expected = """
         tell application "Keynote"
-            set presenter notes of slide 3 of document 1 to "Slow down here."
+            set presenter notes of slide 3 of \(deckSpecifier) to "Slow down here."
         end tell
         """
         let action = PresentationAction.updateSpeakerNotes(index: 3, notes: "Slow down here.")
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 
     @Test("empty speaker notes clear the field")
     func emptySpeakerNotesClear() {
         let expected = """
         tell application "Keynote"
-            set presenter notes of slide 1 of document 1 to ""
+            set presenter notes of slide 1 of \(deckSpecifier) to ""
         end tell
         """
-        #expect(AppleScriptRenderer.render(.updateSpeakerNotes(index: 1, notes: "")) == expected)
+        #expect(AppleScriptRenderer.render(.updateSpeakerNotes(index: 1, notes: ""), in: deck) == expected)
     }
 }
 
@@ -266,24 +271,24 @@ struct AppleScriptRendererEscapingTests {
         let action = PresentationAction.updateSlide(index: 1, title: #"The "Big" Idea"#, body: nil)
         let expected = """
         tell application "Keynote"
-            tell slide 1 of document 1
+            tell slide 1 of \(deckSpecifier)
                 set object text of default title item to "The \\"Big\\" Idea"
             end tell
         end tell
         """
-        #expect(AppleScriptRenderer.render(action) == expected)
+        #expect(AppleScriptRenderer.render(action, in: deck) == expected)
     }
 
     @Test("backslashes are escaped before anything else")
     func escapesBackslashes() {
         let action = PresentationAction.updateSlide(index: 1, title: #"C:\path"#, body: nil)
-        #expect(AppleScriptRenderer.render(action).contains(#"to "C:\\path""#))
+        #expect(AppleScriptRenderer.render(action, in: deck).contains(#"to "C:\\path""#))
     }
 
     @Test("a backslash followed by a quote does not double-escape")
     func escapesBackslashThenQuote() {
         let action = PresentationAction.updateSlide(index: 1, title: #"a\"b"#, body: nil)
-        #expect(AppleScriptRenderer.render(action).contains(#"to "a\\\"b""#))
+        #expect(AppleScriptRenderer.render(action, in: deck).contains(#"to "a\\\"b""#))
     }
 
     @Test("a quote cannot break out of the string literal")
@@ -293,12 +298,12 @@ struct AppleScriptRendererEscapingTests {
         let hostile = #"" & (do shell script "echo pwned") & ""#
         let expected = """
         tell application "Keynote"
-            tell slide 1 of document 1
+            tell slide 1 of \(deckSpecifier)
                 set object text of default title item to "\\" & (do shell script \\"echo pwned\\") & \\""
             end tell
         end tell
         """
-        let rendered = AppleScriptRenderer.render(.updateSlide(index: 1, title: hostile, body: nil))
+        let rendered = AppleScriptRenderer.render(.updateSlide(index: 1, title: hostile, body: nil), in: deck)
         #expect(rendered == expected)
 
         // Belt and braces: inside the value, no quote stands unescaped.
@@ -321,19 +326,19 @@ struct AppleScriptRendererEscapingTests {
     @Test("tabs and carriage returns are escaped in body items")
     func escapesWhitespaceControls() {
         let action = PresentationAction.updateSlide(index: 1, title: nil, body: ["a\tb", "c\rd"])
-        #expect(AppleScriptRenderer.render(action).contains(#"to "a\tb\nc\rd""#))
+        #expect(AppleScriptRenderer.render(action, in: deck).contains(#"to "a\tb\nc\rd""#))
     }
 
     @Test("a theme name is escaped too")
     func escapesTheme() {
         let action = PresentationAction.createPresentation(title: "T", theme: #"My "Theme""#)
-        #expect(AppleScriptRenderer.render(action).contains(#"{document theme:theme "My \"Theme\""}"#))
+        #expect(AppleScriptRenderer.render(action, in: deck).contains(#"{document theme:theme "My \"Theme\""}"#))
     }
 
     @Test("speaker notes are escaped")
     func escapesSpeakerNotes() {
         let action = PresentationAction.updateSpeakerNotes(index: 1, notes: "Say \"hello\".")
-        #expect(AppleScriptRenderer.render(action).contains(#"to "Say \"hello\".""#))
+        #expect(AppleScriptRenderer.render(action, in: deck).contains(#"to "Say \"hello\".""#))
     }
 }
 
@@ -355,7 +360,7 @@ struct AppleScriptRendererShapeTests {
 
     @Test("every action renders a balanced Keynote-only tell block", arguments: everyActionKind)
     func balancedTellBlock(action: PresentationAction) {
-        let rendered = AppleScriptRenderer.render(action)
+        let rendered = AppleScriptRenderer.render(action, in: deck)
         let lines = rendered.split(separator: "\n", omittingEmptySubsequences: false)
 
         #expect(lines.first == #"tell application "Keynote""#)
@@ -368,12 +373,12 @@ struct AppleScriptRendererShapeTests {
 
     @Test("rendering is deterministic", arguments: everyActionKind)
     func deterministic(action: PresentationAction) {
-        #expect(AppleScriptRenderer.render(action) == AppleScriptRenderer.render(action))
+        #expect(AppleScriptRenderer.render(action, in: deck) == AppleScriptRenderer.render(action, in: deck))
     }
 
     @Test("no action reaches for the shell or the system", arguments: everyActionKind)
     func noShellAccess(action: PresentationAction) {
-        let rendered = AppleScriptRenderer.render(action)
+        let rendered = AppleScriptRenderer.render(action, in: deck)
         for forbidden in ["do shell script", "System Events", "tell application \"Finder\""] {
             #expect(!rendered.contains(forbidden))
         }

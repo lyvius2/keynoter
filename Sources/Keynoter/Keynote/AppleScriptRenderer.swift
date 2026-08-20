@@ -11,6 +11,9 @@ import Foundation
 ///   `ValidationEngine` already ran, so it never re-checks indices or text
 ///   lengths — its only defensive job is escaping, via `AppleScriptString`.
 ///
+/// Every template names its target document explicitly (`DocumentRef`), never
+/// `document 1`. See `DocumentRef` for why.
+///
 /// Two deliberate omissions:
 ///
 /// - No `activate`. Content edits should not steal focus; foregrounding is
@@ -20,20 +23,23 @@ import Foundation
 ///   by theme, so naming one here would break on any theme that lacks it.
 enum AppleScriptRenderer {
 
-    static func render(_ action: PresentationAction) -> String {
+    /// `document` is the deck every slide reference is resolved against.
+    /// `createPresentation` ignores it — it makes its own document and works
+    /// through a local variable, so there is nothing to target yet.
+    static func render(_ action: PresentationAction, in document: DocumentRef) -> String {
         switch action {
         case .createPresentation(let title, let theme):
             return renderCreatePresentation(title: title, theme: theme)
         case .addSlide(let index, let spec):
-            return renderAddSlide(index: index, spec: spec)
+            return renderAddSlide(index: index, spec: spec, in: document)
         case .updateSlide(let index, let title, let body):
-            return renderUpdateSlide(index: index, title: title, body: body)
+            return renderUpdateSlide(index: index, title: title, body: body, in: document)
         case .deleteSlide(let index):
-            return renderDeleteSlide(index: index)
+            return renderDeleteSlide(index: index, in: document)
         case .moveSlide(let from, let to):
-            return renderMoveSlide(from: from, to: to)
+            return renderMoveSlide(from: from, to: to, in: document)
         case .updateSpeakerNotes(let index, let notes):
-            return renderUpdateSpeakerNotes(index: index, notes: notes)
+            return renderUpdateSpeakerNotes(index: index, notes: notes, in: document)
         }
     }
 
@@ -71,10 +77,10 @@ enum AppleScriptRenderer {
     /// the beginning and index N inserts after slide N-1. Using `beginning of`
     /// rather than `before slide 1` keeps index 1 valid even when the document
     /// has no slides to reference.
-    private static func renderAddSlide(index: Int, spec: SlideSpec) -> String {
+    private static func renderAddSlide(index: Int, spec: SlideSpec, in document: DocumentRef) -> String {
         let location = index <= 1
-            ? "at beginning of document 1"
-            : "at after slide \(index - 1) of document 1"
+            ? "at beginning of \(document.specifier)"
+            : "at after slide \(index - 1) of \(document.specifier)"
 
         var lines = ["set newSlide to make new slide \(location)"]
         // A new slide has nothing to clear, so only non-empty content is
@@ -93,35 +99,46 @@ enum AppleScriptRenderer {
     /// A `nil` field is left alone; an empty string / empty array clears the
     /// placeholder. Both `nil` would be an empty (harmless) `tell` block, but
     /// validation rejects that action before it reaches here.
-    private static func renderUpdateSlide(index: Int, title: String?, body: [String]?) -> String {
+    private static func renderUpdateSlide(
+        index: Int,
+        title: String?,
+        body: [String]?,
+        in document: DocumentRef
+    ) -> String {
         tellKeynote(
             tell(
-                "slide \(index) of document 1",
+                "slide \(index) of \(document.specifier)",
                 slideProperties(title: title, body: body, speakerNotes: nil)
             )
         )
     }
 
-    private static func renderDeleteSlide(index: Int) -> String {
-        tellKeynote(["delete slide \(index) of document 1"])
+    private static func renderDeleteSlide(index: Int, in document: DocumentRef) -> String {
+        tellKeynote(["delete slide \(index) of \(document.specifier)"])
     }
 
     /// AppleScript resolves the destination against the slide order *before*
     /// the move, so landing on position `to` means "after slide `to`" when
     /// moving down the deck and "before slide `to`" when moving up.
-    private static func renderMoveSlide(from: Int, to: Int) -> String {
+    private static func renderMoveSlide(from: Int, to: Int, in document: DocumentRef) -> String {
         guard from != to else {
             return tellKeynote(["-- slide \(from) is already at position \(to); nothing to do"])
         }
         let destination = from < to ? "after" : "before"
         return tellKeynote(
-            ["move slide \(from) of document 1 to \(destination) slide \(to) of document 1"]
+            ["move slide \(from) of \(document.specifier) "
+             + "to \(destination) slide \(to) of \(document.specifier)"]
         )
     }
 
-    private static func renderUpdateSpeakerNotes(index: Int, notes: String) -> String {
+    private static func renderUpdateSpeakerNotes(
+        index: Int,
+        notes: String,
+        in document: DocumentRef
+    ) -> String {
         tellKeynote(
-            ["set presenter notes of slide \(index) of document 1 to \(AppleScriptString.literal(notes))"]
+            ["set presenter notes of slide \(index) of \(document.specifier) "
+             + "to \(AppleScriptString.literal(notes))"]
         )
     }
 

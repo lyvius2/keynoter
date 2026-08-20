@@ -100,12 +100,43 @@ Tests/
 ```swift
 // Session owns:
 var documentPath: URL?
+var documentRef: DocumentRef?  // which Keynote document, by id
 var mode: SessionMode          // .create | .edit
 var isModified: Bool
 var slideMetadata: [SlideInfo] // title, index — synced after each action
 var lastAppleScript: String?
 var history: History           // undo/redo stacks of HistoryEntry
 ```
+
+---
+
+## Document Targeting
+
+**Never `front document` or `document 1`.** Those mean "whichever window the
+user last clicked", so bringing another deck forward in Keynote silently
+redirects every Keynoter command at it.
+
+Keynote gives each open document a UUID. `/create` and `/edit` capture it, the
+session holds it, and every script names it:
+
+```
+tell application "Keynote"
+    delete slide 3 of document id "C29AB346-…"
+end tell
+```
+
+Consequences worth keeping:
+
+- The id survives saving and window reordering, and disambiguates two open
+  documents that share a file name.
+- If the user closes the document in Keynote, the next command fails with
+  `-1728` instead of hitting the wrong deck. Failing loudly is the point.
+- Keynote offers no way to raise one document's window (`set index of window`
+  fails with `-10006`), so `/open` re-opens the file the document is already
+  showing — that brings it forward without opening a second copy.
+- `save … in <file>` writes a *copy* and leaves the open document bound to its
+  old file. `/save-as` therefore closes the original and opens the copy, so
+  later `/save` calls cannot write to the previous path.
 
 ---
 
@@ -167,7 +198,7 @@ Rules that follow from this:
 | `/status` | Show session state (document, slides, modified, undo depth) |
 | `/open` | Bring active document to foreground in Keynote |
 | `/save` | Save active document |
-| `/save-as <name>` | Save copy under new name |
+| `/save-as <name>` | Write a copy, then continue editing it (original is closed) |
 | `/undo` | Revert last Keynoter-driven action |
 | `/redo` | Reapply last undone action |
 | `/script` | Print AppleScript from last operation |
@@ -229,7 +260,7 @@ substitutes only pre-validated, escaped values. It never interpolates raw model 
 ```
 AddSlide(index: 3, spec: ...) →
   tell application "Keynote"
-    set newSlide to make new slide at after slide 2 of document 1
+    set newSlide to make new slide at after slide 2 of document id "…"
     set object text of default title item of newSlide to "..."
   end tell
 ```
@@ -324,5 +355,6 @@ Progress display · graceful degradation when Apple Intelligence unavailable
 - [ ] Slide index is within current slide count
 - [ ] Text fields are free of AppleScript metacharacters (`"`, `\`, `&`)
 - [ ] File path is within allowed directories and has `.key` extension
+- [ ] The script names its target document by id — no `front document`
 - [ ] Action type is in the supported allow-list
 - [ ] AppleScript targets Keynote only — no shell or system calls

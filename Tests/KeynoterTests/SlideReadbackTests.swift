@@ -2,6 +2,9 @@ import Foundation
 import Testing
 @testable import Keynoter
 
+private let deck = DocumentRef(id: "TEST-DOC-ID")
+private let deckSpecifier = "document id \"TEST-DOC-ID\""
+
 /// Covers reading one slide back out of Keynote — the script that asks for it
 /// and the parser that turns the answer into a `SlideSpec`. This is the input
 /// `InverseBuilder` needs to make a destructive action undoable.
@@ -27,7 +30,7 @@ struct SlideReadbackTests {
         let expected = """
         tell application "Keynote"
             set sep to ASCII character 31
-            set theSlide to slide 3 of front document
+            set theSlide to slide 3 of \(deckSpecifier)
             set titleFlag to "0"
             set slideTitle to ""
             try
@@ -47,7 +50,7 @@ struct SlideReadbackTests {
             return titleFlag & sep & bodyFlag & sep & slideTitle & sep & slideBody & sep & slideNotes
         end tell
         """
-        #expect(KeynoteController.readSlideScript(index: 3) == expected)
+        #expect(KeynoteController.readSlideScript(document: deck, index: 3) == expected)
     }
 
     // MARK: - Parsing

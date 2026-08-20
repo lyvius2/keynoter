@@ -1,6 +1,7 @@
 import Foundation
 
 enum ActionRunnerError: Error, Equatable {
+    case noDocument
     case nothingToUndo
     case nothingToRedo
 }
@@ -91,15 +92,21 @@ struct ActionRunner {
         ValidationContext(slideCount: session.slideCount)
     }
 
+    /// The document every rendered action targets.
+    private func targetDocument() throws -> DocumentRef {
+        guard let ref = session.documentRef else { throw ActionRunnerError.noDocument }
+        return ref
+    }
+
     /// Reads the slide `action` is about to change, when its inverse needs it.
     private func captureSnapshot(for action: PresentationAction) async throws -> SlideSpec? {
         guard let index = InverseBuilder.snapshotIndex(for: action) else { return nil }
-        return try await controller.readSlide(at: index)
+        return try await controller.readSlide(try targetDocument(), at: index)
     }
 
     /// Renders, runs, and records the script for `/script`. Returns the script.
     private func execute(_ action: PresentationAction) async throws -> String {
-        let script = AppleScriptRenderer.render(action)
+        let script = AppleScriptRenderer.render(action, in: try targetDocument())
         try await controller.execute(script)
         session.recordAppleScript(script)
         session.markModified()
@@ -111,6 +118,7 @@ extension ActionRunnerError {
 
     var userMessage: String {
         switch self {
+        case .noDocument: "No active document. Use /create <name> or /edit <path>."
         case .nothingToUndo: "Nothing to undo."
         case .nothingToRedo: "Nothing to redo."
         }

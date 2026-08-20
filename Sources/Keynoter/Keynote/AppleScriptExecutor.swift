@@ -115,7 +115,10 @@ extension AppleScriptError {
             case -1743:
                 return "Automation permission denied. Grant this terminal permission to control Keynote in System Settings > Privacy & Security > Automation."
             case -1728:
-                return "Keynote couldn't find that object — is a document open?"
+                // Now that every command names its document by id, this most
+                // often means that document was closed in Keynote while the
+                // session still pointed at it.
+                return "Keynote couldn't find that document or slide. If you closed the document in Keynote, run /close and then /edit <path> to reattach."
             case -1712:
                 return "Keynote didn't respond in time."
             default:

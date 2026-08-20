@@ -98,11 +98,11 @@ final class REPL {
             return
         }
         do {
-            let script = try await controller.createDocument(at: url)
-            session.attach(documentPath: url, mode: .create)
+            let opened = try await controller.createDocument(at: url)
+            session.attach(documentPath: url, ref: opened.ref, mode: .create)
             // After attach — attaching resets the script buffer along with the
             // rest of the previous document's state.
-            session.recordAppleScript(script)
+            session.recordAppleScript(opened.script)
             Console.success("Created \(url.lastPathComponent)")
             await refreshSlides()
         } catch {
@@ -121,9 +121,9 @@ final class REPL {
             return
         }
         do {
-            let script = try await controller.openDocument(at: url)
-            session.attach(documentPath: url, mode: .edit)
-            session.recordAppleScript(script)
+            let opened = try await controller.openDocument(at: url)
+            session.attach(documentPath: url, ref: opened.ref, mode: .edit)
+            session.recordAppleScript(opened.script)
             Console.success("Opened \(url.lastPathComponent)")
             await refreshSlides()
         } catch {
@@ -132,24 +132,18 @@ final class REPL {
     }
 
     private func handleOpen() async {
-        guard session.hasDocument else {
-            Console.warning("No active document. Use /create <name> or /edit <path>.")
-            return
-        }
+        guard let document = activeDocument() else { return }
         do {
-            session.recordAppleScript(try await controller.activate())
+            session.recordAppleScript(try await controller.activate(document))
         } catch {
             reportError(error)
         }
     }
 
     private func handleSave() async {
-        guard session.hasDocument else {
-            Console.warning("No active document.")
-            return
-        }
+        guard let document = activeDocument() else { return }
         do {
-            session.recordAppleScript(try await controller.saveDocument())
+            session.recordAppleScript(try await controller.saveDocument(document))
             session.markModified(false)
             Console.success("Saved \(session.documentName ?? "")")
         } catch {
@@ -158,32 +152,32 @@ final class REPL {
     }
 
     private func handleSaveAs(_ name: String) async {
-        guard session.hasDocument else {
-            Console.warning("No active document.")
-            return
-        }
+        guard let document = activeDocument() else { return }
         let url = PathResolver.resolveKeynotePath(name)
         if FileManager.default.fileExists(atPath: url.path) {
             Console.failure("File already exists: \(url.path).")
             return
         }
         do {
-            let script = try await controller.saveDocumentAs(at: url)
-            session.renameDocument(to: url)
-            session.recordAppleScript(script)
+            let opened = try await controller.saveDocumentAs(document, at: url)
+            let previous = session.documentName
+            session.switchDocument(to: url, ref: opened.ref)
+            session.recordAppleScript(opened.script)
             Console.success("Saved as \(url.lastPathComponent)")
+            // Keynote cannot "save as" in place: editing continues in the copy
+            // and the original keeps whatever was last written to it.
+            if let previous {
+                Console.info("Now editing \(url.lastPathComponent); \(previous) is closed.")
+            }
         } catch {
             reportError(error)
         }
     }
 
     private func handleClose() async {
-        guard session.hasDocument else {
-            Console.warning("No active document.")
-            return
-        }
+        guard let document = activeDocument() else { return }
         do {
-            try await controller.closeDocument(save: true)
+            try await controller.closeDocument(document, save: true)
             let name = session.documentName ?? ""
             session.closeDocument()
             Console.success("Closed \(name)")
@@ -195,7 +189,7 @@ final class REPL {
     // MARK: - History commands
 
     private func handleUndo() async {
-        guard requireDocument() else { return }
+        guard activeDocument() != nil else { return }
         guard session.history.canUndo else {
             Console.warning("Nothing to undo.")
             return
@@ -210,7 +204,7 @@ final class REPL {
     }
 
     private func handleRedo() async {
-        guard requireDocument() else { return }
+        guard activeDocument() != nil else { return }
         guard session.history.canRedo else {
             Console.warning("Nothing to redo.")
             return
@@ -235,17 +229,21 @@ final class REPL {
         Console.line(script)
     }
 
-    private func requireDocument() -> Bool {
-        guard session.hasDocument else {
-            Console.warning("No active document. Use /create <name> or /edit <path>.")
-            return false
+    /// The active document, or `nil` after reporting that there isn't one.
+    /// Every command that touches Keynote starts here, so the "no document"
+    /// wording lives in exactly one place.
+    private func activeDocument() -> DocumentRef? {
+        guard let ref = session.documentRef else {
+            Console.warning(ActionRunnerError.noDocument.userMessage)
+            return nil
         }
-        return true
+        return ref
     }
 
     private func refreshSlides() async {
+        guard let document = session.documentRef else { return }
         do {
-            let slides = try await controller.readSlideMetadata()
+            let slides = try await controller.readSlideMetadata(document)
             session.updateSlideMetadata(slides)
         } catch {
             // Non-fatal: leave cached metadata in place, tell the user why.

@@ -136,12 +136,13 @@ struct AppleScriptErrorMessageTests {
         #expect(error.userMessage.contains("System Settings"))
     }
 
-    @Test("-1728 becomes a friendly no-document message")
+    @Test("-1728 explains that the document is gone and how to reattach")
     func objectNotFound() {
         let error = AppleScriptError.executionFailed(
             exitCode: 1, errorCode: -1728, stdout: "", stderr: "..."
         )
         #expect(error.userMessage.contains("document"))
+        #expect(error.userMessage.contains("/edit"))
     }
 
     @Test("An unknown error code falls back to stderr")

@@ -83,7 +83,7 @@ Planned MVP commands:
 | `/status` | Show the current session and document state |
 | `/open` | Open or focus the active document in Keynote |
 | `/save` | Save the active presentation |
-| `/save-as {filename}` | Save the presentation under another name |
+| `/save-as {filename}` | Write a copy and continue editing it |
 | `/undo` | Undo the latest Keynoter operation |
 | `/redo` | Reapply the latest undone operation |
 | `/script` | Show the AppleScript generated for the latest operation |
@@ -130,6 +130,16 @@ Keynote
 This keeps model reasoning separate from application execution and makes
 generated automation inspectable through `/script`.
 
+## Which Document?
+
+Keynoter targets the document you opened, by the id Keynote assigns it --- not
+"whatever window is in front". You can click around in Keynote, open other
+decks, or leave a presentation from yesterday on screen, and `/save`, `/undo`
+and every slide edit still land on your session's document.
+
+If you close that document inside Keynote, the next command says so instead of
+quietly editing whatever took its place.
+
 ## Undo
 
 A structured action cannot reverse itself --- `delete slide 3` does not
@@ -171,7 +181,7 @@ model is now in place. Slash commands parse and dispatch through the REPL,
 `/doctor` reports on the local environment, and the six Keynote-driving
 commands (`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk
 to Keynote through AppleScript. `/status` reads live slide metadata back
-from the front document.
+from the session's document.
 
 The action pipeline is complete: every `PresentationAction` is validated,
 rendered to a fixed AppleScript template, executed, and recorded on an
@@ -189,6 +199,7 @@ Implementation milestones:
 -   [x] deterministic AppleScript rendering
 -   [x] undo/redo
 -   [x] AppleScript inspection (`/script`)
+-   [x] document targeting by id, independent of the front window
 -   [ ] Foundation Models integration
 
 PDF and PowerPoint export, richer layouts, diagrams, images, themes, and

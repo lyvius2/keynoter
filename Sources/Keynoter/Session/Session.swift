@@ -20,6 +20,10 @@ struct SlideInfo: Equatable, Sendable {
 final class Session {
 
     private(set) var documentPath: URL?
+
+    /// Which Keynote document this session drives. Every command targets it by
+    /// id, so clicking another deck in Keynote cannot redirect Keynoter at it.
+    private(set) var documentRef: DocumentRef?
     private(set) var mode: SessionMode = .create
     private(set) var isModified = false
     private(set) var slideMetadata: [SlideInfo] = []
@@ -40,8 +44,9 @@ final class Session {
 
     // MARK: - Mutation
 
-    func attach(documentPath: URL, mode: SessionMode) {
+    func attach(documentPath: URL, ref: DocumentRef, mode: SessionMode) {
         self.documentPath = documentPath
+        self.documentRef = ref
         self.mode = mode
         self.isModified = false
         self.slideMetadata = []
@@ -52,10 +57,13 @@ final class Session {
         self.history.clear()
     }
 
-    /// Updates the tracked path in place — used after `/save-as` where the
-    /// contents (and therefore slide metadata) do not change.
-    func renameDocument(to path: URL) {
+    /// Follows `/save-as` into the copy. The slide metadata and history carry
+    /// over untouched — same deck, same slide indices — but the reference does
+    /// not: `save … in` leaves the original bound to its old file, so Keynoter
+    /// closes it and opens the copy, which Keynote gives a fresh id.
+    func switchDocument(to path: URL, ref: DocumentRef) {
         self.documentPath = path
+        self.documentRef = ref
         self.isModified = false
     }
 
@@ -94,6 +102,7 @@ final class Session {
     /// Drops the active document but leaves the REPL running (`/close`).
     func closeDocument() {
         documentPath = nil
+        documentRef = nil
         mode = .create
         isModified = false
         slideMetadata = []

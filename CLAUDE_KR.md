@@ -102,12 +102,41 @@ Tests/
 ```swift
 // Session이 소유하는 값:
 var documentPath: URL?
+var documentRef: DocumentRef?  // 어떤 Keynote 문서인지, id로 지목
 var mode: SessionMode          // .create | .edit
 var isModified: Bool
 var slideMetadata: [SlideInfo] // 제목, 인덱스 — 각 액션 후 동기화
 var lastAppleScript: String?
 var history: History           // HistoryEntry의 undo/redo 스택
 ```
+
+---
+
+## 문서 지목 (Document Targeting)
+
+**`front document`나 `document 1`을 절대 쓰지 않는다.** 이것은 "사용자가 마지막으로
+클릭한 창"을 뜻하므로, Keynote에서 다른 덱을 앞으로 가져오면 모든 Keynoter 명령이
+조용히 그쪽으로 향한다.
+
+Keynote는 열려 있는 문서마다 UUID를 부여한다. `/create`와 `/edit`이 이를 붙잡고,
+세션이 보관하며, 모든 스크립트가 그것을 지목한다:
+
+```
+tell application "Keynote"
+    delete slide 3 of document id "C29AB346-…"
+end tell
+```
+
+기억해 둘 귀결:
+
+- id는 저장과 창 순서 변경을 견디며, 파일 이름이 같은 두 문서도 구분한다.
+- 사용자가 Keynote에서 문서를 닫으면 다음 명령은 엉뚱한 덱을 건드리는 대신 `-1728`로
+  실패한다. 요란하게 실패하는 것이 목적이다.
+- Keynote에는 특정 문서의 창을 앞으로 올리는 수단이 없다(`set index of window`는
+  `-10006`으로 실패). 그래서 `/open`은 그 문서가 이미 보여주고 있는 파일을 다시
+  열어 앞으로 가져온다 — 사본이 새로 생기지 않는다.
+- `save … in <file>`은 *사본*만 쓰고 열려 있는 문서는 이전 파일에 묶어 둔다. 그래서
+  `/save-as`는 원본을 닫고 사본을 연다. 이후 `/save`가 이전 경로에 쓰는 일을 막기 위함이다.
 
 ---
 
@@ -168,7 +197,7 @@ undo와 redo는 별도의 메커니즘이 아니다. 같은 렌더러를 통해 
 | `/status` | 세션 상태 표시 (문서, 슬라이드, 수정 여부, undo 깊이) |
 | `/open` | 활성 문서를 Keynote 전면으로 가져오기 |
 | `/save` | 활성 문서 저장 |
-| `/save-as <name>` | 새 이름으로 사본 저장 |
+| `/save-as <name>` | 사본을 쓴 뒤 그 사본을 계속 편집 (원본은 닫힘) |
 | `/undo` | Keynoter가 수행한 마지막 액션 되돌리기 |
 | `/redo` | 마지막으로 되돌린 액션 다시 적용 |
 | `/script` | 마지막 작업의 AppleScript 출력 |
@@ -230,7 +259,7 @@ let plan = try await session.respond(
 ```
 AddSlide(index: 3, spec: ...) →
   tell application "Keynote"
-    set newSlide to make new slide at after slide 2 of document 1
+    set newSlide to make new slide at after slide 2 of document id "…"
     set object text of default title item of newSlide to "..."
   end tell
 ```
@@ -324,5 +353,6 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 - [ ] 슬라이드 인덱스가 현재 슬라이드 수 범위 내인가
 - [ ] 텍스트 필드에 AppleScript 메타문자(`"`, `\`, `&`)가 없는가
 - [ ] 파일 경로가 허용된 디렉터리 안에 있고 `.key` 확장자를 가지는가
+- [ ] 스크립트가 대상 문서를 id로 지목하는가 — `front document` 금지
 - [ ] 액션 타입이 지원되는 허용 목록(allow-list)에 있는가
 - [ ] AppleScript가 Keynote만 대상으로 하는가 — 셸이나 시스템 호출 없음

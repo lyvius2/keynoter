@@ -7,6 +7,8 @@ import Testing
 struct SessionTests {
 
     private let deck = URL(fileURLWithPath: "/tmp/demo.key")
+    private let ref = DocumentRef(id: "DOC-1")
+    private let otherRef = DocumentRef(id: "DOC-2")
 
     @Test("A fresh session holds no document")
     func initialState() {
@@ -25,7 +27,7 @@ struct SessionTests {
     @Test("Attaching a document records its path and mode")
     func attach() {
         let session = Session()
-        session.attach(documentPath: deck, mode: .edit)
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
 
         #expect(session.hasDocument)
         #expect(session.documentPath == deck)
@@ -37,12 +39,12 @@ struct SessionTests {
     @Test("Attaching clears state carried over from the previous document")
     func attachResetsPreviousState() {
         let session = Session()
-        session.attach(documentPath: deck, mode: .create)
+        session.attach(documentPath: deck, ref: ref, mode: .create)
         session.updateSlideMetadata([SlideInfo(index: 1, title: "Intro")])
         session.recordAppleScript("tell application \"Keynote\"")
         session.markModified()
 
-        session.attach(documentPath: URL(fileURLWithPath: "/tmp/other.key"), mode: .edit)
+        session.attach(documentPath: URL(fileURLWithPath: "/tmp/other.key"), ref: otherRef, mode: .edit)
 
         #expect(session.slideCount == 0)
         #expect(session.lastAppleScript == nil)
@@ -52,12 +54,12 @@ struct SessionTests {
     @Test("History belongs to a document, so attaching a new one discards it")
     func attachClearsHistory() {
         let session = Session()
-        session.attach(documentPath: deck, mode: .edit)
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
         session.recordHistory(
             HistoryEntry(applied: .deleteSlide(index: 1), inverse: .addSlide(index: 1, spec: SlideSpec()))
         )
 
-        session.attach(documentPath: URL(fileURLWithPath: "/tmp/other.key"), mode: .edit)
+        session.attach(documentPath: URL(fileURLWithPath: "/tmp/other.key"), ref: otherRef, mode: .edit)
 
         #expect(session.history.canUndo == false)
     }
@@ -95,7 +97,7 @@ struct SessionTests {
     @Test("Closing the document discards the history")
     func closeClearsHistory() {
         let session = Session()
-        session.attach(documentPath: deck, mode: .edit)
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
         session.recordHistory(
             HistoryEntry(applied: .moveSlide(from: 1, to: 2), inverse: .moveSlide(from: 2, to: 1))
         )
@@ -127,10 +129,10 @@ struct SessionTests {
         #expect(session.isModified == false)
     }
 
-    @Test("Renaming preserves slide metadata and resets the modified flag")
-    func renameDocument() {
+    @Test("/save-as follows the copy: new path and reference, same slides")
+    func switchDocument() {
         let session = Session()
-        session.attach(documentPath: deck, mode: .edit)
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
         session.updateSlideMetadata([
             SlideInfo(index: 1, title: "Intro"),
             SlideInfo(index: 2, title: "Architecture")
@@ -138,10 +140,12 @@ struct SessionTests {
         session.markModified()
 
         let newPath = URL(fileURLWithPath: "/tmp/copy.key")
-        session.renameDocument(to: newPath)
+        session.switchDocument(to: newPath, ref: otherRef)
 
         #expect(session.documentPath == newPath)
         #expect(session.documentName == "copy.key")
+        // Keynote gives the reopened copy a fresh id.
+        #expect(session.documentRef == otherRef)
         #expect(session.mode == .edit)
         #expect(session.isModified == false)
         #expect(session.slideCount == 2)
@@ -151,7 +155,7 @@ struct SessionTests {
     @Test("Closing the document leaves the session usable")
     func closeDocument() {
         let session = Session()
-        session.attach(documentPath: deck, mode: .edit)
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
         session.updateSlideMetadata([SlideInfo(index: 1, title: "Intro")])
         session.recordAppleScript("tell application \"Keynote\"")
         session.markModified()

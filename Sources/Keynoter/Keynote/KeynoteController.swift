@@ -3,6 +3,9 @@ import Foundation
 /// Talks to Keynote through AppleScript for the operations `/create`, `/edit`,
 /// `/open`, `/save`, `/save-as`, `/close`, and `/status` need.
 ///
+/// Every operation names the document it targets via `DocumentRef` — never
+/// `front document`, which is whichever window the user last clicked.
+///
 /// Every operation is a two-step composition: a `static` builder produces the
 /// AppleScript string, then `executor.run(_:)` runs it. Splitting it that way
 /// keeps the AppleScript text testable without ever touching a live Keynote —
@@ -22,41 +25,51 @@ struct KeynoteController: Sendable {
     /// can hand it to `Session.recordAppleScript(_:)` and `/script` shows what
     /// actually executed rather than a rebuilt approximation.
 
-    /// Creates a new empty document and saves it at `path`.
-    @discardableResult
-    func createDocument(at path: URL) async throws -> String {
-        try await run(Self.createScript(path: path.path))
+    /// A document-producing operation: the reference to work with from now on,
+    /// plus the script that produced it.
+    typealias Opened = (ref: DocumentRef, script: String)
+
+    /// Creates a new empty document, saves it at `path`, and returns a
+    /// reference to it.
+    func createDocument(at path: URL) async throws -> Opened {
+        let script = Self.createScript(path: path.path)
+        return (try await runReturningRef(script), script)
     }
 
-    /// Opens the document at `path`.
-    @discardableResult
-    func openDocument(at path: URL) async throws -> String {
-        try await run(Self.openScript(path: path.path))
+    /// Opens the document at `path` and returns a reference to it.
+    func openDocument(at path: URL) async throws -> Opened {
+        let script = Self.openScript(path: path.path)
+        return (try await runReturningRef(script), script)
     }
 
-    /// Saves the front document in place.
+    /// Saves `document` in place.
     @discardableResult
-    func saveDocument() async throws -> String {
-        try await run(Self.saveScript())
+    func saveDocument(_ document: DocumentRef) async throws -> String {
+        try await run(Self.saveScript(document: document))
     }
 
-    /// Saves the front document to a new path.
-    @discardableResult
-    func saveDocumentAs(at path: URL) async throws -> String {
-        try await run(Self.saveAsScript(path: path.path))
+    /// Writes `document` to `path` and continues in the copy: the original is
+    /// closed at its last-saved state and the new file is opened.
+    ///
+    /// Keynote's `save … in <file>` only writes a copy — the open document
+    /// stays bound to its old file — so switching has to be done explicitly or
+    /// `/save` would keep writing to the previous path.
+    func saveDocumentAs(_ document: DocumentRef, at path: URL) async throws -> Opened {
+        let script = Self.saveAsScript(document: document, path: path.path)
+        return (try await runReturningRef(script), script)
     }
 
-    /// Closes the front document. `save == true` writes pending changes,
-    /// `false` discards them.
+    /// Closes `document`. `save == true` writes pending changes, `false`
+    /// discards them.
     @discardableResult
-    func closeDocument(save: Bool) async throws -> String {
-        try await run(Self.closeScript(save: save))
+    func closeDocument(_ document: DocumentRef, save: Bool) async throws -> String {
+        try await run(Self.closeScript(document: document, save: save))
     }
 
-    /// Brings Keynote to the foreground.
+    /// Brings Keynote forward with `document` as the frontmost window.
     @discardableResult
-    func activate() async throws -> String {
-        try await run(Self.activateScript())
+    func activate(_ document: DocumentRef) async throws -> String {
+        try await run(Self.activateScript(document: document))
     }
 
     /// Runs a script `AppleScriptRenderer` produced and returns the same script.
@@ -67,18 +80,18 @@ struct KeynoteController: Sendable {
         try await run(script)
     }
 
-    /// Reads the front document's slides in order, one `SlideInfo` per slide.
-    func readSlideMetadata() async throws -> [SlideInfo] {
-        let output = try await executor.run(Self.readSlidesScript())
+    /// Reads `document`'s slides in order, one `SlideInfo` per slide.
+    func readSlideMetadata(_ document: DocumentRef) async throws -> [SlideInfo] {
+        let output = try await executor.run(Self.readSlidesScript(document: document))
         return Self.parseSlideMetadata(output)
     }
 
-    /// Reads one slide's full text content back out of the front document.
+    /// Reads one slide's full text content back out of `document`.
     ///
     /// Used to capture the "before" state that `InverseBuilder` needs to make
     /// a destructive action undoable.
-    func readSlide(at index: Int) async throws -> SlideSpec {
-        let output = try await executor.run(Self.readSlideScript(index: index))
+    func readSlide(_ document: DocumentRef, at index: Int) async throws -> SlideSpec {
+        let output = try await executor.run(Self.readSlideScript(document: document, index: index))
         return Self.parseSlide(output)
     }
 
@@ -90,8 +103,14 @@ struct KeynoteController: Sendable {
         return script
     }
 
+    /// Runs a script whose last statement returns a document id.
+    private func runReturningRef(_ script: String) async throws -> DocumentRef {
+        DocumentRef(id: try await executor.run(script).trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     // MARK: - Script builders (internal for tests)
 
+    /// Returns the new document's id, which every later command targets.
     static func createScript(path: String) -> String {
         let quoted = escapeAppleScriptString(path)
         return """
@@ -99,50 +118,66 @@ struct KeynoteController: Sendable {
             activate
             set newDoc to make new document
             save newDoc in POSIX file "\(quoted)"
+            return id of newDoc
         end tell
         """
     }
 
+    /// `open` hands back the document it opened, so the id comes for free.
     static func openScript(path: String) -> String {
         let quoted = escapeAppleScriptString(path)
         return """
         tell application "Keynote"
             activate
-            open POSIX file "\(quoted)"
+            set openedDoc to open POSIX file "\(quoted)"
+            return id of openedDoc
         end tell
         """
     }
 
-    static func saveScript() -> String {
+    static func saveScript(document: DocumentRef) -> String {
         """
         tell application "Keynote"
-            save front document
+            save \(document.specifier)
         end tell
         """
     }
 
-    static func saveAsScript(path: String) -> String {
+    /// Writes a copy, drops the original, and reopens the copy — returning the
+    /// new document's id. The original is closed `saving no` because its
+    /// contents were just written to the new path; the file it leaves behind is
+    /// its last-saved state.
+    static func saveAsScript(document: DocumentRef, path: String) -> String {
         let quoted = escapeAppleScriptString(path)
         return """
         tell application "Keynote"
-            save front document in POSIX file "\(quoted)"
+            set sourceDoc to \(document.specifier)
+            save sourceDoc in POSIX file "\(quoted)"
+            close sourceDoc saving no
+            set newDoc to open POSIX file "\(quoted)"
+            return id of newDoc
         end tell
         """
     }
 
-    static func closeScript(save: Bool) -> String {
+    static func closeScript(document: DocumentRef, save: Bool) -> String {
         let savingClause = save ? "yes" : "no"
         return """
         tell application "Keynote"
-            close front document saving \(savingClause)
+            close \(document.specifier) saving \(savingClause)
         end tell
         """
     }
 
-    static func activateScript() -> String {
+    /// Keynote offers no way to raise one document's window — setting a window
+    /// index fails with `-10006`. Re-opening the file it is already showing
+    /// does bring it forward, without opening a second copy.
+    static func activateScript(document: DocumentRef) -> String {
         """
         tell application "Keynote"
             activate
+            set targetFile to file of \(document.specifier)
+            open targetFile
         end tell
         """
     }
@@ -150,11 +185,11 @@ struct KeynoteController: Sendable {
     /// Emits `<index>\t<title>\n` per slide. `default title item` is wrapped
     /// in `try`/`end try` so layouts without a title placeholder still produce
     /// a row (title = "") instead of aborting the loop.
-    static func readSlidesScript() -> String {
+    static func readSlidesScript(document: DocumentRef) -> String {
         """
         tell application "Keynote"
             set output to ""
-            set doc to front document
+            set doc to \(document.specifier)
             set slideCount to count of slides of doc
             repeat with i from 1 to slideCount
                 set slideTitle to ""
@@ -178,11 +213,11 @@ struct KeynoteController: Sendable {
     /// at all. A missing placeholder and an empty one both read back as "",
     /// and the difference matters — it is how `parseSlide(_:)` infers the
     /// layout, and therefore which placeholders a restored slide may write to.
-    static func readSlideScript(index: Int) -> String {
+    static func readSlideScript(document: DocumentRef, index: Int) -> String {
         """
         tell application "Keynote"
             set sep to ASCII character 31
-            set theSlide to slide \(index) of front document
+            set theSlide to slide \(index) of \(document.specifier)
             set titleFlag to "0"
             set slideTitle to ""
             try

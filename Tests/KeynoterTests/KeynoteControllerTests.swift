@@ -2,6 +2,10 @@ import Foundation
 import Testing
 @testable import Keynoter
 
+/// Fixed id so the pinned scripts stay byte-stable.
+private let deck = DocumentRef(id: "TEST-DOC-ID")
+private let deckSpecifier = "document id \"TEST-DOC-ID\""
+
 @Suite("KeynoteController scripts")
 struct KeynoteControllerScriptTests {
 
@@ -12,6 +16,7 @@ struct KeynoteControllerScriptTests {
             activate
             set newDoc to make new document
             save newDoc in POSIX file "/tmp/demo.key"
+            return id of newDoc
         end tell
         """
         #expect(KeynoteController.createScript(path: "/tmp/demo.key") == expected)
@@ -22,60 +27,67 @@ struct KeynoteControllerScriptTests {
         let expected = """
         tell application "Keynote"
             activate
-            open POSIX file "/tmp/demo.key"
+            set openedDoc to open POSIX file "/tmp/demo.key"
+            return id of openedDoc
         end tell
         """
         #expect(KeynoteController.openScript(path: "/tmp/demo.key") == expected)
     }
 
-    @Test("saveScript targets the front document")
+    @Test("saveScript targets the tracked document, not the front one")
     func saveScript() {
         let expected = """
         tell application "Keynote"
-            save front document
+            save \(deckSpecifier)
         end tell
         """
-        #expect(KeynoteController.saveScript() == expected)
+        #expect(KeynoteController.saveScript(document: deck) == expected)
     }
 
-    @Test("saveAsScript pins its exact AppleScript")
+    @Test("saveAsScript writes the copy, drops the original, and reopens the copy")
     func saveAsScript() {
         let expected = """
         tell application "Keynote"
-            save front document in POSIX file "/tmp/copy.key"
+            set sourceDoc to \(deckSpecifier)
+            save sourceDoc in POSIX file "/tmp/copy.key"
+            close sourceDoc saving no
+            set newDoc to open POSIX file "/tmp/copy.key"
+            return id of newDoc
         end tell
         """
-        #expect(KeynoteController.saveAsScript(path: "/tmp/copy.key") == expected)
+        #expect(KeynoteController.saveAsScript(document: deck, path: "/tmp/copy.key") == expected)
     }
 
     @Test("closeScript with save uses `saving yes`")
     func closeScriptSave() {
         let expected = """
         tell application "Keynote"
-            close front document saving yes
+            close \(deckSpecifier) saving yes
         end tell
         """
-        #expect(KeynoteController.closeScript(save: true) == expected)
+        #expect(KeynoteController.closeScript(document: deck, save: true) == expected)
     }
 
     @Test("closeScript without save uses `saving no`")
     func closeScriptDiscard() {
         let expected = """
         tell application "Keynote"
-            close front document saving no
+            close \(deckSpecifier) saving no
         end tell
         """
-        #expect(KeynoteController.closeScript(save: false) == expected)
+        #expect(KeynoteController.closeScript(document: deck, save: false) == expected)
     }
 
-    @Test("activateScript brings Keynote forward")
+    @Test("activateScript raises the tracked document, not just the app")
     func activateScript() {
         let expected = """
         tell application "Keynote"
             activate
+            set targetFile to file of \(deckSpecifier)
+            open targetFile
         end tell
         """
-        #expect(KeynoteController.activateScript() == expected)
+        #expect(KeynoteController.activateScript(document: deck) == expected)
     }
 
     @Test("readSlidesScript emits index\\ttitle\\n rows and tolerates missing titles")
@@ -83,7 +95,7 @@ struct KeynoteControllerScriptTests {
         let expected = """
         tell application "Keynote"
             set output to ""
-            set doc to front document
+            set doc to \(deckSpecifier)
             set slideCount to count of slides of doc
             repeat with i from 1 to slideCount
                 set slideTitle to ""
@@ -95,7 +107,7 @@ struct KeynoteControllerScriptTests {
             return output
         end tell
         """
-        #expect(KeynoteController.readSlidesScript() == expected)
+        #expect(KeynoteController.readSlidesScript(document: deck) == expected)
     }
 }
 

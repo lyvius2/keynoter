@@ -4,7 +4,7 @@ import Foundation
 ///
 /// The planner emits a sequence of these; the renderer turns each into a
 /// deterministic AppleScript snippet; the executor runs the snippets in order.
-/// Indices are 1-based to match AppleScript's `slide N of document 1`.
+/// Indices are 1-based to match AppleScript's `slide N of <document>`.
 enum PresentationAction: Equatable, Sendable {
     /// Creates a new, empty document. `theme` names a Keynote theme (e.g.
     /// "White", "Modern Portfolio"); `nil` uses the default.
