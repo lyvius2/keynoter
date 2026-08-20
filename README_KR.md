@@ -92,7 +92,7 @@ MVP 예정 명령어:
 | `/script` | 마지막 작업에서 생성된 AppleScript 표시 |
 | `/doctor` | 로컬 Keynoter 환경 점검 |
 | `/close` | 활성 문서 세션 닫기 |
-| `/exit` | Keynoter 종료 |
+| `/exit` | Keynoter 종료 (저장되지 않은 변경이 있으면 한 번 되묻습니다) |
 
 프레젠테이션 내용의 변경은 명령어가 아니라 자연어로 표현합니다:
 
@@ -277,7 +277,6 @@ keynoter/
 
 Phase 5 — 다듬기:
 
--   `/exit` 시 미저장 변경 경고
 -   계획 적용 중 더 나은 진행 표시
 -   Apple Intelligence를 사용할 수 없을 때의 우아한 동작
 -   긴 세션을 위한 컨텍스트 윈도우 관리

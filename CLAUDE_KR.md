@@ -208,6 +208,32 @@ undo와 redo는 별도의 메커니즘이 아니다. 같은 렌더러를 통해 
 
 MVP 이후: `/export pdf`, `/export pptx`
 
+### 저장되지 않은 변경이 있을 때의 종료
+
+Keynoter가 적용한 액션이 저장되지 않은 상태라면 `/exit`는 **한 번만** 거절하고,
+다시 입력하면 그대로 종료한다.
+
+```
+> /exit
+! demo.key has unsaved changes. /save first, or /exit again to quit anyway.
+> /exit
+! demo.key has unsaved changes; it is still open in Keynote.
+Goodbye.
+```
+
+- 거절은 메시지일 뿐, `save first? [y/n]` 같은 차단형 질문이 아니다. 그런 질문은
+  다음 입력 줄을 읽어버리므로, 파이프로 스크립트를 넣어 실행할 때 명령 하나를
+  조용히 삼킨다. 입력 한 줄은 결정 하나로 남긴다.
+- 세션 상태와 무관하게 **거절은 정확히 한 번**이다. 어떤 응답도, 어떤 실패도,
+  열려 있는 문서도 사용자를 REPL 안에 가둘 수 없다.
+- 다른 입력이 들어오면 대기 중인 확인은 취소된다. 세 명령 전에 출력한 경고가
+  지금의 `/exit`에 대한 답으로 둔갑하지 않는다.
+- Ctrl-D도 같은 종료 요청이므로 같은 보호를 받지만, **터미널에서만** 그렇다.
+  파이프 입력의 끝에서는 두 번째 Ctrl-D가 있을 수 없어 루프가 멈춰버린다.
+- Keynoter는 종료할 때 문서를 닫지 않으므로, 저장되지 않은 작업은 사라진 것이
+  아니라 Keynote에 그대로 남아 있다. 마지막 줄이 그 사실을 알려주며, Ctrl-D와
+  파이프 종료를 포함해 변경이 남은 모든 종료 경로에서 출력된다.
+
 ---
 
 ## 도메인 모델
@@ -362,7 +388,7 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 
 ### Phase 5 — 다듬기 (현재 단계)
 진행 상황 표시 · Apple Intelligence를 사용할 수 없을 때의 우아한 성능 저하(graceful degradation)
-· `/exit` 시 미저장 변경 경고 · 컨텍스트 윈도우 관리
+· `/exit` 시 미저장 변경 경고 (완료) · 컨텍스트 윈도우 관리
 
 ### Phase 6 — MVP 이후
 `/export pdf` · `/export pptx` · 테마 · 발표자 노트 · 더 다양한 레이아웃

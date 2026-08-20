@@ -27,13 +27,27 @@ final class REPL {
 
         while !session.shouldExit {
             guard let line = reader.readLine(prompt: Console.prompt) else {
-                // EOF (Ctrl-D): finish the prompt line, then leave.
-                if reader.isInteractive { Console.line() }
+                // EOF (Ctrl-D): finish the prompt line, then treat it as the
+                // quit request it is — same unsaved-change guard as /exit.
+                // Only at a terminal, though: at the end of a piped script
+                // there is no second Ctrl-D to give, and holding the loop open
+                // waiting for one would hang it.
+                if reader.isInteractive {
+                    Console.line()
+                    requestExit(repeatWith: "press Ctrl-D again")
+                    if !session.shouldExit { continue }
+                }
                 break
             }
             await handle(line)
         }
 
+        // Keynoter never closes the document on the way out, so unsaved work is
+        // still sitting in Keynote rather than lost — say so, since the whole
+        // point of the warning above was that the user might not know.
+        if session.isModified, let name = session.documentName {
+            Console.warning("\(name) has unsaved changes; it is still open in Keynote.")
+        }
         Console.info("Goodbye.")
     }
 
@@ -49,7 +63,15 @@ final class REPL {
     // MARK: - Routing
 
     private func handle(_ line: String) async {
-        switch CommandParser.parse(line) {
+        let input = CommandParser.parse(line)
+        // Anything other than asking again answers a held-back /exit with
+        // "not yet" — a warning from three commands ago must not still count
+        // as the confirmation for this one.
+        if input != .command(.exit) {
+            session.cancelExitRequest()
+        }
+
+        switch input {
         case .empty:
             break
         case .command(let command):
@@ -66,7 +88,7 @@ final class REPL {
         case .help:
             printHelp()
         case .exit:
-            session.shouldExit = true
+            requestExit(repeatWith: "/exit again")
 
         case .create(let name):
             await handleCreate(name)
@@ -93,6 +115,21 @@ final class REPL {
         case .doctor:
             printDoctor()
         }
+    }
+
+    /// Quits, or refuses once when the document has changes Keynoter has not
+    /// saved. `hint` is how the user repeats *this* request — the wording
+    /// differs between `/exit` and Ctrl-D.
+    ///
+    /// The refusal is a message rather than a blocking "save first? [y/n]"
+    /// question on purpose: such a question reads the next line of input, which
+    /// silently swallows a command when Keynoter is driven by a piped script,
+    /// and gives the loop a second kind of input line to reason about. Asking
+    /// for the command again keeps one line meaning one decision.
+    private func requestExit(repeatWith hint: String) {
+        if session.requestExit() { return }
+        let name = session.documentName ?? "The document"
+        Console.warning("\(name) has unsaved changes. /save first, or \(hint) to quit anyway.")
     }
 
     /// Natural language drives the presentation's *content*: plan the change,

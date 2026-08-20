@@ -93,7 +93,7 @@ Planned MVP commands:
 | `/script` | Show the AppleScript generated for the latest operation |
 | `/doctor` | Check the local Keynoter environment |
 | `/close` | Close the active document session |
-| `/exit` | Exit Keynoter |
+| `/exit` | Exit Keynoter (asks again when there are unsaved changes) |
 
 Presentation changes themselves are expressed in natural language rather
 than as commands:
@@ -279,7 +279,6 @@ decisions, read:
 
 Phase 5 --- polish:
 
--   warn about unsaved changes on `/exit`;
 -   richer progress display while a plan is being applied;
 -   graceful behaviour when Apple Intelligence is unavailable;
 -   context-window management for long sessions.

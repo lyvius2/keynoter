@@ -209,6 +209,33 @@ Rules that follow from this:
 
 Post-MVP: `/export pdf`, `/export pptx`
 
+### Quitting with unsaved changes
+
+`/exit` refuses **once** when Keynoter has applied actions that were never
+saved, and goes through on the repeat:
+
+```
+> /exit
+! demo.key has unsaved changes. /save first, or /exit again to quit anyway.
+> /exit
+! demo.key has unsaved changes; it is still open in Keynote.
+Goodbye.
+```
+
+- The refusal is a message, not a blocking `save first? [y/n]` question. Such a
+  question reads the next line of input, which silently swallows a command when
+  Keynoter is driven by a piped script. One input line stays one decision.
+- **Exactly one refusal**, whatever the state of the session — no answer, no
+  failure and no open document can trap the user inside the REPL.
+- Any other input clears the pending confirmation, so a warning printed three
+  commands ago never counts as the answer to this `/exit`.
+- Ctrl-D is the same quit request and gets the same guard, but **only at a
+  terminal**: at the end of a piped script there is no second Ctrl-D to give,
+  and waiting for one would hang the loop.
+- Keynoter never closes the document on the way out, so unsaved work is sitting
+  in Keynote, not lost. The parting line says so — it prints on every exit that
+  leaves changes behind, including Ctrl-D and end-of-pipe.
+
 ---
 
 ## Domain Model
@@ -369,7 +396,7 @@ only when `/create` grows a theme argument (Phase 6).
 
 ### Phase 5 — Polish (current)
 Progress display · graceful degradation when Apple Intelligence unavailable
-· unsaved-change warning on `/exit` · context window management
+· unsaved-change warning on `/exit` (done) · context window management
 
 ### Phase 6 — Post-MVP
 `/export pdf` · `/export pptx` · themes · speaker notes · richer layouts

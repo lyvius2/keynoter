@@ -129,6 +129,56 @@ struct SessionTests {
         #expect(session.isModified == false)
     }
 
+    @Test("A saved session quits on the first request")
+    func exitWhenSaved() {
+        let session = Session()
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
+
+        #expect(session.requestExit())
+        #expect(session.shouldExit)
+    }
+
+    @Test("Unsaved changes hold the first quit request and let the second through")
+    func exitWithUnsavedChanges() {
+        let session = Session()
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
+        session.markModified()
+
+        #expect(session.requestExit() == false)
+        #expect(session.isExitPending)
+        #expect(session.shouldExit == false)
+
+        #expect(session.requestExit())
+        #expect(session.shouldExit)
+    }
+
+    @Test("Saving in between makes the next quit request unconditional")
+    func savingClearsTheExitWarning() {
+        let session = Session()
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
+        session.markModified()
+        #expect(session.requestExit() == false)
+
+        session.cancelExitRequest()
+        session.markModified(false)
+
+        #expect(session.requestExit())
+    }
+
+    @Test("Any other input withdraws a held-back quit request")
+    func cancellingRestoresTheWarning() {
+        let session = Session()
+        session.attach(documentPath: deck, ref: ref, mode: .edit)
+        session.markModified()
+        #expect(session.requestExit() == false)
+
+        session.cancelExitRequest()
+
+        // The confirmation no longer stands, so the warning comes back.
+        #expect(session.requestExit() == false)
+        #expect(session.shouldExit == false)
+    }
+
     @Test("/save-as follows the copy: new path and reference, same slides")
     func switchDocument() {
         let session = Session()

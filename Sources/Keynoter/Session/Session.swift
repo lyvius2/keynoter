@@ -33,8 +33,13 @@ final class Session {
     /// action with the action that reverses it — see `HistoryEntry`.
     private(set) var history = History()
 
-    /// Set by `/exit` (and by EOF on stdin) to end the REPL loop.
-    var shouldExit = false
+    /// Set by `requestExit()` to end the REPL loop.
+    private(set) var shouldExit = false
+
+    /// Armed when a quit request was held back because of unsaved changes.
+    /// Cleared by `cancelExitRequest()` on any other input, so the confirmation
+    /// always answers the request immediately before it.
+    private(set) var isExitPending = false
 
     var hasDocument: Bool { documentPath != nil }
 
@@ -77,6 +82,29 @@ final class Session {
 
     func markModified(_ modified: Bool = true) {
         isModified = modified
+    }
+
+    // MARK: - Quitting
+
+    /// Answers a quit request: `true` to leave now, `false` to hold once so the
+    /// user can save first.
+    ///
+    /// Unsaved changes buy exactly one refusal — the second request goes
+    /// through whatever the state of the document — so nothing here can trap
+    /// the user inside the REPL.
+    func requestExit() -> Bool {
+        if isModified && !isExitPending {
+            isExitPending = true
+            return false
+        }
+        shouldExit = true
+        return true
+    }
+
+    /// Withdraws a held-back quit request: anything the user does other than
+    /// asking again answers "not yet".
+    func cancelExitRequest() {
+        isExitPending = false
     }
 
     // MARK: - History
