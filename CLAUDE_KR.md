@@ -74,7 +74,7 @@ Sources/
     ├── AI/
     │   ├── FoundationModelClient.swift — LanguageModelSession 소유
     │   ├── PresentationPlanner.swift   — 자연어 프롬프트 → [PresentationAction]
-    │   ├── PresentationPlan.swift      — @Generable 계획 타입 + 액션 변환
+    │   ├── PresentationPlan.swift      — @Generable 계획 타입, 스트리밍 진행 상태, 액션 변환
     │   └── PromptBuilder.swift         — 시스템 지시문 + 사용자 프롬프트 구성
     ├── Domain/
     │   ├── PresentationSpec.swift      — PresentationSpec, SlideSpec, SlideLayout
@@ -266,11 +266,17 @@ struct PresentationPlan {
 ```swift
 // FoundationModelClient.swift
 let session = LanguageModelSession(instructions: systemInstructions)
-let plan = try await session.respond(
+let responses = session.streamResponse(
     to: userPrompt,
-    generating: PresentationPlan.self
+    generating: PresentationPlan.self,
+    options: .init(sampling: .greedy)
 )
-// plan.content.actions → 검증 → 렌더링 → 실행
+var latest: GeneratedContent?
+for try await snapshot in responses {
+    latest = snapshot.rawContent          // 루프가 끝나면 이것이 완성된 답이다
+    onProgress(PlanProgress(snapshot.content))
+}
+let plan = try PresentationPlan(latest!)  // → 검증 → 렌더링 → 실행
 ```
 
 모델이 반환해야 하는 모든 타입에는 `@Generable`을 사용한다. 필드 값을 제약하려면
@@ -282,6 +288,23 @@ let plan = try await session.respond(
   슬라이드를 만들어야 하고, 프롬프트가 잘못 동작할 때 재현할 수 있어야 한다.
 - **`GenerableAction`은 연관값 enum이 아니라 평평한 레코드다.** 작은 온디바이스 모델이
   안정적으로 채우기 쉽다. 해당 없는 필드는 비워 두고 변환기가 무시한다.
+- **응답은 기다리지 않고 흘려 받는다.** 8장짜리 계획은 1분 가까이 걸리는데
+  `respond(to:generating:)`는 끝날 때까지 아무것도 보여주지 않는다. 스냅샷마다
+  `PlanProgress`를 만들어 앞 줄 위에 덮어 쓰므로, 단계가 만들어지는 과정을 볼 수 있다:
+
+  ```
+  Planning...
+    3. add slide 3 "Key Features" (5 bullets)
+  ```
+
+  `PartiallyGenerated`는 완성된 계획을 대신할 수 없다 — 모든 필드가 옵셔널이다 — 그래서
+  마지막 스냅샷의 `rawContent`로 계획을 다시 만든다. `collect()`는 루프가 이미 스트림을
+  소비한 뒤라 쓰지 않는다. 불릿 개수를 세는 이유는, 긴 본문을 쓰는 동안 움직이는 것이
+  그것뿐이기 때문이다. 계획이 전부 손에 들어오기 전에는 아무것도 적용하지 않는다.
+- **진행 표시는 터미널에서만.** `Console.progress`는 한 줄을 제자리에서 고쳐 쓰며,
+  stdout이 리다이렉트되면 아무것도 출력하지 않는다 — 캐리지 리턴이 이미 쓴 것을
+  되돌릴 수 없는 곳이기 때문이다. 같은 내용의 스냅샷(연속 열 개가 같은 단계를 설명하는
+  일이 흔하다)은 다시 쓰지 않는다.
 - **플래너는 `createPresentation`을 낼 수 없다.** 문서 생성은 `/create`의 몫이고,
   뺀 덕분에 모델이 만든 모든 액션이 되돌릴 수 있게 되어 `/undo`가 항상 동작한다.
 - **`updateSlide`에서 빈 값은 "지우기"가 아니라 "건드리지 않기".** 도메인 모델은 둘을
@@ -394,8 +417,8 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 영문 테마 이름 매핑은 `/create`가 테마 인자를 받게 될 때(Phase 6) 비로소 실제 작업이 된다.
 
 ### Phase 5 — 다듬기 (현재 단계)
-진행 상황 표시 · Apple Intelligence를 사용할 수 없을 때의 우아한 성능 저하(graceful degradation)
-· `/exit` 시 미저장 변경 경고 (완료) · 컨텍스트 윈도우 관리
+진행 상황 표시 (완료) · Apple Intelligence를 사용할 수 없을 때의 우아한 성능
+저하(graceful degradation) · `/exit` 시 미저장 변경 경고 (완료) · 컨텍스트 윈도우 관리
 
 ### Phase 6 — MVP 이후
 `/export pdf` · `/export pptx` · 테마 · 발표자 노트 · 더 다양한 레이아웃

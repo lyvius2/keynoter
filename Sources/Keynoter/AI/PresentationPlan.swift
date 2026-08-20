@@ -67,6 +67,89 @@ struct GenerableAction {
     var speakerNotes: String
 }
 
+// MARK: - Progress
+
+/// A plan as it is being written, reduced to the two things worth showing while
+/// the user waits: how many changes the model has started, and what it is
+/// writing right now.
+///
+/// Built from `PresentationPlan.PartiallyGenerated`, whose fields are all
+/// optional — a snapshot arrives with the action's kind but not yet its title,
+/// then the title but not yet the body. Every field is therefore treated as
+/// "not written yet" rather than "absent".
+struct PlanProgress: Equatable, Sendable {
+
+    /// How many actions the model has begun describing.
+    let actionCount: Int
+
+    /// The action being written, as far as it has been written. `nil` until it
+    /// says what kind of change it is.
+    let current: String?
+
+    /// What the REPL prints: the step number and the change taking shape under
+    /// it, mirroring the `  add slide 4` lines printed as steps are applied.
+    var display: String {
+        guard actionCount > 0 else { return "…" }
+        return "\(actionCount). \(current ?? "…")"
+    }
+
+    init(actionCount: Int, current: String?) {
+        self.actionCount = actionCount
+        self.current = current
+    }
+
+    init(_ partial: PresentationPlan.PartiallyGenerated) {
+        let actions = partial.actions ?? []
+        self.actionCount = actions.count
+        self.current = actions.last.flatMap(Self.describe)
+    }
+
+    /// Deliberately close to `PresentationAction.summary`, so a step reads the
+    /// same while it is being planned and after it has been applied.
+    static func describe(_ action: GenerableAction.PartiallyGenerated) -> String? {
+        guard let kind = action.kind else { return nil }
+
+        let slide = action.slideIndex.map { "slide \($0)" } ?? "slide"
+        switch kind {
+        case .addSlide:
+            return "add \(slide)" + titleSuffix(action.title) + bodySuffix(action.body)
+        case .updateSlide:
+            return "update \(slide)" + titleSuffix(action.title) + bodySuffix(action.body)
+        case .deleteSlide:
+            return "delete \(slide)"
+        case .moveSlide:
+            guard let target = action.targetIndex else { return "move \(slide)" }
+            return "move \(slide) to \(target)"
+        case .updateSpeakerNotes:
+            return "update speaker notes on \(slide)"
+        }
+    }
+
+    /// An empty title means the model has not written one yet, not that the
+    /// slide has none — so it is left off the line rather than shown as blank.
+    /// Truncated because this goes on a single terminal line that is rewritten
+    /// in place: a title that wraps would leave the previous update on screen.
+    private static func titleSuffix(_ title: String?) -> String {
+        guard let title, !title.isEmpty else { return "" }
+        let collapsed = title
+            .split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard !collapsed.isEmpty else { return "" }
+        let shown = collapsed.count <= 40 ? collapsed : collapsed.prefix(40) + "…"
+        return " \"\(shown)\""
+    }
+
+    /// Bullets are counted rather than shown. The count is also the only thing
+    /// that moves while the model writes a long body — the step number and the
+    /// title have been on screen for ten seconds by then — and the bullets
+    /// themselves would not fit on the line.
+    private static func bodySuffix(_ body: [String]?) -> String {
+        guard let body, !body.isEmpty else { return "" }
+        return " (\(body.count) bullet\(body.count == 1 ? "" : "s"))"
+    }
+}
+
 // MARK: - Conversion
 
 enum PlanConversionError: Error, Equatable {

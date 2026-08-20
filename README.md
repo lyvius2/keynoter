@@ -140,6 +140,17 @@ What you type in plain language becomes a *plan*: an ordered list of changes
 like "add a slide at 3" or "replace slide 4's bullets". Apple's on-device model
 fills that plan in; it never writes AppleScript, and it is never asked to.
 
+A plan for a whole deck takes the better part of a minute to write, so you watch
+it being written --- the line under `Planning...` is rewritten as each step takes
+shape:
+
+``` text
+> Create a 4-slide overview of Apache Kafka for engineers.
+
+Planning...
+  3. add slide 3 "Key Features" (5 bullets)
+```
+
 Each change is then checked against the document as it stands, rendered to a
 fixed AppleScript template, and applied. Every step is logged as it lands:
 
@@ -214,8 +225,9 @@ the session's document.
 Typing a request in plain language plans a set of changes with Apple's
 on-device model, converts them to validated `PresentationAction`s, renders
 each to a fixed AppleScript template, and applies them in order --- with
-`/undo`, `/redo`, and `/script` wired to the result. What remains is
-polish: unsaved-change warnings, richer progress output, and export.
+`/undo`, `/redo`, and `/script` wired to the result, and the plan shown
+taking shape while the model writes it. What remains is polish: context-window
+management for long sessions, and export.
 
 Implementation milestones:
 
@@ -279,7 +291,6 @@ decisions, read:
 
 Phase 5 --- polish:
 
--   richer progress display while a plan is being applied;
 -   graceful behaviour when Apple Intelligence is unavailable;
 -   context-window management for long sessions.
 

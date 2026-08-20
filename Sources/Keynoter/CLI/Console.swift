@@ -6,9 +6,9 @@ enum Console {
 
     // MARK: - Styling
 
-    /// ANSI styling is only emitted when stdout is a terminal, so piped or
-    /// redirected output stays clean.
-    private static let isStyled: Bool = isatty(STDOUT_FILENO) == 1
+    /// Whether stdout is a terminal. ANSI styling and in-place progress are
+    /// only emitted when it is, so piped or redirected output stays clean.
+    static let isTerminal: Bool = isatty(STDOUT_FILENO) == 1
 
     private enum Style: String {
         case reset = "\u{001B}[0m"
@@ -21,7 +21,7 @@ enum Console {
     }
 
     private static func styled(_ text: String, _ style: Style) -> String {
-        isStyled ? style.rawValue + text + Style.reset.rawValue : text
+        isTerminal ? style.rawValue + text + Style.reset.rawValue : text
     }
 
     // MARK: - Setup
@@ -61,6 +61,26 @@ enum Console {
 
     static func heading(_ text: String) {
         print(styled(text, .bold))
+    }
+
+    // MARK: - Progress
+
+    /// Rewrites the current line with `text`. Meant for work in flight, where
+    /// only the newest line is worth reading.
+    ///
+    /// Silent when stdout is not a terminal: a redirected transcript would
+    /// otherwise collect one line per snapshot, most of them half-written, and
+    /// carriage returns cannot take them back.
+    static func progress(_ text: String) {
+        guard isTerminal else { return }
+        write("\r\u{001B}[2K" + styled(text, .dim))
+    }
+
+    /// Erases the progress line so ordinary output starts from a clean one.
+    /// Safe to call when nothing was written.
+    static func endProgress() {
+        guard isTerminal else { return }
+        write("\r\u{001B}[2K")
     }
 
     // MARK: - Fixed screens

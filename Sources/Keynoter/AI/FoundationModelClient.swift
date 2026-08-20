@@ -78,14 +78,22 @@ final class FoundationModelClient {
 
     // MARK: - Planning
 
-    /// Asks the model to fill in a `PresentationPlan` for `prompt`.
-    func plan(prompt: String) async throws -> PresentationPlan {
+    /// Asks the model to fill in a `PresentationPlan` for `prompt`, reporting
+    /// the plan as it takes shape.
+    ///
+    /// `onProgress` is called on every snapshot the model emits — often several
+    /// times per action — so the caller should render it cheaply and expect
+    /// repeats.
+    func plan(
+        prompt: String,
+        onProgress: (PlanProgress) -> Void = { _ in }
+    ) async throws -> PresentationPlan {
         if case .unavailable(let reason) = Self.availability() {
             throw PlannerError.modelUnavailable(reason: reason)
         }
 
         do {
-            return try await respond(to: prompt)
+            return try await stream(prompt, onProgress)
         } catch let error as LanguageModelSession.GenerationError {
             // The transcript filled up. Drop it and try once with a clean
             // session — the deck outline travels in the prompt, so nothing the
@@ -95,7 +103,7 @@ final class FoundationModelClient {
             }
             session = nil
             do {
-                return try await respond(to: prompt)
+                return try await stream(prompt, onProgress)
             } catch {
                 throw Self.translate(error)
             }
@@ -104,10 +112,38 @@ final class FoundationModelClient {
         }
     }
 
-    private func respond(to prompt: String) async throws -> PresentationPlan {
-        try await activeSession()
-            .respond(to: prompt, generating: PresentationPlan.self, options: Self.options)
-            .content
+    /// Streams one response and assembles the finished plan from the last
+    /// snapshot.
+    ///
+    /// Streaming rather than `respond(to:generating:)` is what makes progress
+    /// possible at all: a plan for eight slides takes the better part of a
+    /// minute, and a single request hands back nothing until it is done.
+    ///
+    /// The result is rebuilt from the final snapshot's `rawContent` rather than
+    /// from `collect()`, because the stream has already been consumed by the
+    /// loop. `PartiallyGenerated` cannot stand in for the finished plan — every
+    /// field on it is optional — so the raw content is the one thing that
+    /// carries the complete answer out of the loop.
+    private func stream(
+        _ prompt: String,
+        _ onProgress: (PlanProgress) -> Void
+    ) async throws -> PresentationPlan {
+        let responses = activeSession().streamResponse(
+            to: prompt,
+            generating: PresentationPlan.self,
+            options: Self.options
+        )
+
+        var latest: GeneratedContent?
+        for try await snapshot in responses {
+            latest = snapshot.rawContent
+            onProgress(PlanProgress(snapshot.content))
+        }
+
+        guard let latest else {
+            throw PlannerError.generationFailed(detail: "The model returned nothing to plan.")
+        }
+        return try PresentationPlan(latest)
     }
 
     private func activeSession() -> LanguageModelSession {
@@ -138,6 +174,9 @@ final class FoundationModelClient {
     // MARK: - Errors
 
     nonisolated static func translate(_ error: Error) -> PlannerError {
+        // Already in Keynoter's terms — wrapping it again would bury the
+        // message the REPL is about to print inside "\(error)".
+        if let error = error as? PlannerError { return error }
         guard let error = error as? LanguageModelSession.GenerationError else {
             return .generationFailed(detail: "\(error)")
         }

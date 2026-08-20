@@ -18,9 +18,16 @@ struct PresentationPlanner {
     /// `slides` is the deck as it stands, and it matters: the model addresses
     /// slides by number, so a stale outline produces a plan aimed at the wrong
     /// slides. Callers refresh before asking.
-    func plan(request: String, slides: [SlideInfo]) async throws -> [PresentationAction] {
+    /// `onProgress` reports the plan as the model writes it. It fires many
+    /// times per action and carries no result — nothing is applied until the
+    /// plan is complete and converted.
+    func plan(
+        request: String,
+        slides: [SlideInfo],
+        onProgress: (PlanProgress) -> Void = { _ in }
+    ) async throws -> [PresentationAction] {
         let prompt = PromptBuilder.prompt(request: request, slides: slides)
-        let plan = try await client.plan(prompt: prompt)
+        let plan = try await client.plan(prompt: prompt, onProgress: onProgress)
         return try plan.toActions()
     }
 }

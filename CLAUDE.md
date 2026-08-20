@@ -72,7 +72,7 @@ Sources/
     ├── AI/
     │   ├── FoundationModelClient.swift — owns LanguageModelSession
     │   ├── PresentationPlanner.swift   — NL prompt → [PresentationAction]
-    │   ├── PresentationPlan.swift      — @Generable plan types + conversion to actions
+    │   ├── PresentationPlan.swift      — @Generable plan types, streaming progress, conversion to actions
     │   └── PromptBuilder.swift         — builds system instructions + user prompt
     ├── Domain/
     │   ├── PresentationSpec.swift      — PresentationSpec, SlideSpec, SlideLayout
@@ -268,11 +268,17 @@ no AppleScript/shell metacharacters in text fields.
 ```swift
 // FoundationModelClient.swift
 let session = LanguageModelSession(instructions: systemInstructions)
-let plan = try await session.respond(
+let responses = session.streamResponse(
     to: userPrompt,
-    generating: PresentationPlan.self
+    generating: PresentationPlan.self,
+    options: .init(sampling: .greedy)
 )
-// plan.content.actions → validate → render → execute
+var latest: GeneratedContent?
+for try await snapshot in responses {
+    latest = snapshot.rawContent          // the complete answer, once the loop ends
+    onProgress(PlanProgress(snapshot.content))
+}
+let plan = try PresentationPlan(latest!)  // → validate → render → execute
 ```
 
 Use `@Generable` on all types the model must return. Use `@Guide` to constrain
@@ -286,6 +292,25 @@ Decisions that hold the planner together:
 - **`GenerableAction` is a flat record**, not an enum with associated values —
   easier for a small on-device model to fill in reliably. Unused fields are
   empty and the converter ignores them.
+- **The response is streamed, not awaited.** A plan for eight slides takes the
+  better part of a minute, and `respond(to:generating:)` shows nothing until it
+  is done. Each snapshot becomes a `PlanProgress` and is printed over the
+  previous one, so the steps are watched taking shape:
+
+  ```
+  Planning...
+    3. add slide 3 "Key Features" (5 bullets)
+  ```
+
+  `PartiallyGenerated` cannot stand in for the finished plan — every field on it
+  is optional — so the plan is rebuilt from the last snapshot's `rawContent`
+  rather than from `collect()`, which the loop has already consumed. The bullet
+  count is there because it is the only thing that moves while a long body is
+  written. Nothing is applied until the whole plan is in hand.
+- **Progress is a terminal-only affair.** `Console.progress` rewrites one line
+  in place and is silent when stdout is redirected, where carriage returns
+  cannot take back what they wrote. Identical snapshots — a dozen in a row
+  describe the same step — are not re-printed.
 - **The planner cannot emit `createPresentation`.** Documents are `/create`'s
   job, and the omission means every model-driven action is reversible, so
   `/undo` always works on them.
@@ -402,8 +427,9 @@ renderer. Mapping English theme names onto the installed ones becomes real work
 only when `/create` grows a theme argument (Phase 6).
 
 ### Phase 5 — Polish (current)
-Progress display · graceful degradation when Apple Intelligence unavailable
-· unsaved-change warning on `/exit` (done) · context window management
+Progress display (done) · graceful degradation when Apple Intelligence
+unavailable · unsaved-change warning on `/exit` (done) · context window
+management
 
 ### Phase 6 — Post-MVP
 `/export pdf` · `/export pptx` · themes · speaker notes · richer layouts

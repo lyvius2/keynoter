@@ -79,7 +79,7 @@ final class REPL {
         case .prompt(let prompt):
             await handleNaturalLanguage(prompt)
         case .failure(let error):
-            Console.failure(error.message)
+        Console.failure(error.message)
         }
     }
 
@@ -144,8 +144,23 @@ final class REPL {
         let actions: [PresentationAction]
         Console.info("Planning...")
         do {
-            actions = try await planner.plan(request: request, slides: session.slideMetadata)
+            // The model writes the plan one field at a time and a full one
+            // takes the better part of a minute, so the steps are shown taking
+            // shape rather than leaving the prompt silent until they are done.
+            //
+            // Snapshots arrive faster than the line changes — a dozen in a row
+            // can describe the same step while its body fills in — so only a
+            // changed line is written.
+            var shown: String?
+            actions = try await planner.plan(request: request, slides: session.slideMetadata) { progress in
+                let line = progress.display
+                guard line != shown else { return }
+                shown = line
+                Console.progress("  \(line)")
+            }
+            Console.endProgress()
         } catch {
+            Console.endProgress()
             reportError(error)
             return
         }
