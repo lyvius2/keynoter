@@ -7,12 +7,18 @@ final class REPL {
     private let session: Session
     private let controller: KeynoteController
     private let runner: ActionRunner
+    private let planner: PresentationPlanner
     private let reader = LineReader()
 
-    init(session: Session, controller: KeynoteController = KeynoteController()) {
+    init(
+        session: Session,
+        controller: KeynoteController = KeynoteController(),
+        planner: PresentationPlanner = PresentationPlanner()
+    ) {
         self.session = session
         self.controller = controller
         self.runner = ActionRunner(session: session, controller: controller)
+        self.planner = planner
     }
 
     func run() async {
@@ -79,10 +85,52 @@ final class REPL {
         }
     }
 
-    private func handleNaturalLanguage(_ prompt: String) async {
-        // Phase 4 wires this to PresentationPlanner.
-        Console.warning("Natural-language planning is not wired up yet (Phase 4).")
-        Console.info("Received prompt: \(prompt)")
+    /// Natural language drives the presentation's *content*: plan the change,
+    /// then apply it one action at a time.
+    private func handleNaturalLanguage(_ request: String) async {
+        guard activeDocument() != nil else { return }
+
+        // The model addresses slides by number, so it must see the deck as it
+        // is now — not as it was before the last command.
+        await refreshSlides()
+
+        let actions: [PresentationAction]
+        Console.info("Planning...")
+        do {
+            actions = try await planner.plan(request: request, slides: session.slideMetadata)
+        } catch {
+            reportError(error)
+            return
+        }
+
+        Console.info("Applying \(actions.count) change\(actions.count == 1 ? "" : "s")...")
+        await apply(actions)
+    }
+
+    /// Applies a plan in order, stopping at the first failure.
+    ///
+    /// Stopping rather than skipping ahead is deliberate: later actions were
+    /// planned against the slide numbers the earlier ones were supposed to
+    /// produce, so continuing past a failure edits the wrong slides. Whatever
+    /// did apply stays on the undo stack, so `/undo` walks it back.
+    private func apply(_ actions: [PresentationAction]) async {
+        for (step, action) in actions.enumerated() {
+            do {
+                try await runner.apply(action)
+            } catch {
+                Console.failure("Step \(step + 1) (\(action.summary)) failed: \(errorMessage(error))")
+                if step > 0 {
+                    Console.info("Applied \(step) of \(actions.count) change\(step == 1 ? "" : "s"); /undo reverts them one at a time.")
+                }
+                await refreshSlides()
+                return
+            }
+            Console.line("  \(action.summary)")
+            // Each action shifts the slide numbers the next one was planned
+            // against, so the count has to be re-read between steps.
+            await refreshSlides()
+        }
+        Console.success("Done.")
     }
 
     // MARK: - Keynote commands
@@ -316,6 +364,8 @@ final class REPL {
     private func errorMessage(_ error: Error) -> String {
         if let ae = error as? AppleScriptError { return ae.userMessage }
         if let re = error as? ActionRunnerError { return re.userMessage }
+        if let pe = error as? PlannerError { return pe.userMessage }
+        if let ce = error as? PlanConversionError { return ce.userMessage }
         if let ve = error as? ValidationError { return ve.userMessage }
         return "\(error)"
     }

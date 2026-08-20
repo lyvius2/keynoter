@@ -210,5 +210,8 @@ struct PromptBuilderTests {
         #expect(text.contains("Never write AppleScript"))
         #expect(text.contains("1-based"))
         #expect(text.contains("in the order you list them"))
+        // A new deck's one empty slide should become the title slide, not be
+        // left behind as a blank first page.
+        #expect(text.contains("empty slide"))
     }
 }

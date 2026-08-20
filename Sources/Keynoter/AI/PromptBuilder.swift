@@ -32,7 +32,9 @@ enum PromptBuilder {
 
     Keep slide text short enough to read from the back of a room: a title of a few \
     words, and at most six bullets of one line each. Put detail in speakerNotes \
-    instead. Write slide text in the same language as the request.
+    instead. Write slide text in the same language as the request. A new \
+    presentation starts with one empty slide: use updateSlide to turn it into the \
+    title slide rather than leaving it blank.
     """
 
     /// The per-request prompt: what the deck looks like now, then what the user
