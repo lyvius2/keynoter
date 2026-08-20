@@ -145,6 +145,19 @@ struct AppleScriptErrorMessageTests {
         #expect(error.userMessage.contains("/edit"))
     }
 
+    @Test("-600 says Keynote is not running rather than repeating a number")
+    func applicationNotRunning() {
+        let error = AppleScriptError.executionFailed(
+            exitCode: 1,
+            errorCode: -600,
+            stdout: "",
+            // What osascript actually prints, in the system's language.
+            stderr: "execution error: Keynote에 오류 발생: 응용 프로그램이 실행 중이 아닙니다. (-600)"
+        )
+        #expect(error.userMessage.contains("Keynote isn't running"))
+        #expect(error.userMessage.contains("-600") == false)
+    }
+
     @Test("An unknown error code falls back to stderr")
     func fallsBackToStderr() {
         let error = AppleScriptError.executionFailed(

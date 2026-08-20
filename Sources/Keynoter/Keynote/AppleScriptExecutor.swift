@@ -121,6 +121,13 @@ extension AppleScriptError {
                 return "Keynote couldn't find that document or slide. If you closed the document in Keynote, run /close and then /edit <path> to reattach."
             case -1712:
                 return "Keynote didn't respond in time."
+            case -600:
+                // Normally unreachable: naming an application in AppleScript
+                // launches it, so Keynote not running is not by itself a
+                // problem. It surfaces when macOS declines to start it — while
+                // Keynote is still shutting down, most often — and the raw
+                // text for it is a localized sentence with a number in it.
+                return "Keynote isn't running and macOS would not start it. Open Keynote, then try again."
             default:
                 return stderr.isEmpty ? "AppleScript execution failed." : stderr
             }
