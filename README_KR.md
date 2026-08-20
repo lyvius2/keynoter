@@ -38,6 +38,99 @@ Applying 5 changes...
 ✓ Done.
 ```
 
+## 시작하기
+
+**필요한 것**
+
+-   macOS 26 이상
+-   Xcode 26 — FoundationModels 프레임워크는 Xcode에 포함된 macOS 26 SDK가
+    제공합니다. Command Line Tools만으로는 이 패키지를 빌드할 수 없습니다.
+-   켜져 있는 Apple Intelligence (시스템 설정 > Apple Intelligence 및 Siri)
+-   설치된 Keynote
+
+**빌드**
+
+``` bash
+git clone https://github.com/lyvius2/keynoter.git
+cd keynoter
+
+# `xcode-select -p`가 CommandLineTools를 가리킨다면 툴체인을 Xcode로 전환합니다
+sudo xcode-select -s /Applications/Xcode.app
+
+swift build -c release
+```
+
+전환하지 않으면 빌드는 매니페스트 단계에서 멈추고
+`error: 'keynoter': Invalid manifest`와 `PackageDescription` 심볼 미정의 오류가
+납니다. 시스템 전체 설정을 바꾸고 싶지 않거나 관리자 권한이 없다면, 명령 앞에
+붙이는 방법도 있습니다:
+
+``` bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release
+```
+
+**실행**
+
+``` bash
+swift run keynoter                              # 소스 디렉터리에서
+```
+
+바이너리를 `PATH`에 두면 어디서든 실행할 수 있습니다:
+
+``` bash
+sudo cp .build/release/keynoter /usr/local/bin/keynoter
+keynoter
+```
+
+**첫 실행**
+
+`/doctor`부터 실행하세요. Keynoter에 필요한 다섯 가지를 점검하고 무엇이
+빠졌는지 알려 줍니다:
+
+``` text
+$ keynoter
+
+> /doctor
+Doctor
+✓ macOS: 26.5.1
+✓ Xcode toolchain: /Applications/Xcode.app/Contents/Developer
+✓ Keynote: /Applications/Keynote.app
+✓ Apple Intelligence: SystemLanguageModel available
+✓ Keynote automation: granted
+
+Environment ready.
+```
+
+Keynote를 건드리는 첫 명령에서 macOS 자동화 권한 창이 뜹니다. 허용하지 않으면
+허용할 때까지 모든 Keynote 명령이 권한 오류로 실패합니다
+(시스템 설정 > 개인정보 보호 및 보안 > 자동화). Xcode 툴체인 점검은 *빌드*에
+관한 것입니다. 이미 빌드해 둔 바이너리는 `xcode-select`가 무엇을 가리키든
+그대로 실행됩니다.
+
+이제 만들어 봅니다:
+
+``` text
+> /create demo
+✓ Created demo.key
+
+> Apache Kafka를 개발자에게 소개하는 4장짜리 자료를 만들어 주세요.
+Planning...
+Applying 4 changes...
+  add slide 1
+  add slide 2
+  add slide 3
+  update slide 4
+✓ Done.
+
+> /save
+✓ Saved demo.key
+```
+
+`demo.key`는 `keynoter`를 실행한 디렉터리에 만들어집니다. `/create`와 `/edit`은
+절대 경로와 `~`도 받습니다. `/help`는 모든 명령어를 보여주고, `/script`는 실제로
+실행된 AppleScript를, `/undo`는 마지막 변경을 되돌립니다.
+
+
 ## 콘셉트
 
 Keynoter는 에이전트 방식의 CLI와 네이티브 macOS 자동화를 결합합니다:
@@ -250,12 +343,9 @@ swift run keynoter   # REPL 실행
 swift test           # 테스트 실행
 ```
 
-`swift build`가 매니페스트 컴파일 단계에서 실패한다면 활성 툴체인이 Xcode가
-아니라 Command Line Tools인 경우입니다. 한 번만 Xcode로 전환하면 됩니다:
-
-``` bash
-sudo xcode-select -s /Applications/Xcode.app
-```
+툴체인 요구사항은 [시작하기](#시작하기)에서 다룬 것과 같습니다. 활성 툴체인이
+Xcode가 아니라 Command Line Tools이면 `swift build`가 매니페스트 컴파일
+단계에서 실패합니다.
 
 패키지 구조 — 단계(Phase)가 표시된 디렉터리는 아직 존재하지 않습니다:
 

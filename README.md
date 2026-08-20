@@ -38,6 +38,101 @@ Applying 5 changes...
 ✓ Done.
 ```
 
+## Get Started
+
+**What you need**
+
+-   macOS 26 or later
+-   Xcode 26 --- the macOS 26 SDK it ships with is what provides the
+    FoundationModels framework. The Command Line Tools alone cannot build this
+    package.
+-   Apple Intelligence turned on (System Settings > Apple Intelligence & Siri)
+-   Keynote installed
+
+**Build**
+
+``` bash
+git clone https://github.com/lyvius2/keynoter.git
+cd keynoter
+
+# Point the toolchain at Xcode if `xcode-select -p` says CommandLineTools
+sudo xcode-select -s /Applications/Xcode.app
+
+swift build -c release
+```
+
+Without the toolchain switch, the build stops at the manifest with
+`error: 'keynoter': Invalid manifest` and undefined `PackageDescription`
+symbols. If you would rather not change the system-wide setting --- or have no
+admin rights --- prefix the command instead:
+
+``` bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift build -c release
+```
+
+**Run**
+
+``` bash
+swift run keynoter                              # from the source directory
+```
+
+Or put the binary on your `PATH` and run it from anywhere:
+
+``` bash
+sudo cp .build/release/keynoter /usr/local/bin/keynoter
+keynoter
+```
+
+**First run**
+
+Start with `/doctor`. It checks the five things Keynoter needs and says which
+one is missing:
+
+``` text
+$ keynoter
+
+> /doctor
+Doctor
+✓ macOS: 26.5.1
+✓ Xcode toolchain: /Applications/Xcode.app/Contents/Developer
+✓ Keynote: /Applications/Keynote.app
+✓ Apple Intelligence: SystemLanguageModel available
+✓ Keynote automation: granted
+
+Environment ready.
+```
+
+The first command that touches Keynote raises the macOS Automation prompt ---
+allow it, or every Keynote command fails with a permission error until you do
+(System Settings > Privacy & Security > Automation). The Xcode toolchain check
+is about *building*: a binary you already built runs whether or not
+`xcode-select` still points at Xcode.
+
+Then make something:
+
+``` text
+> /create demo
+✓ Created demo.key
+
+> Create a 4-slide overview of Apache Kafka for engineers.
+Planning...
+Applying 4 changes...
+  add slide 1
+  add slide 2
+  add slide 3
+  update slide 4
+✓ Done.
+
+> /save
+✓ Saved demo.key
+```
+
+`demo.key` lands in the directory you started `keynoter` from; `/create` and
+`/edit` also take absolute paths and `~`. `/help` lists every command, `/script`
+shows the AppleScript that was actually run, and `/undo` walks the last change
+back.
+
+
 ## Concept
 
 Keynoter combines an agent-style CLI with native macOS automation:
@@ -253,12 +348,9 @@ swift run keynoter   # run the REPL
 swift test           # run the test suite
 ```
 
-If `swift build` fails while compiling the manifest, the active toolchain
-is the Command Line Tools rather than Xcode. Point it at Xcode once:
-
-``` bash
-sudo xcode-select -s /Applications/Xcode.app
-```
+The toolchain requirement is the same one [Get Started](#get-started) covers:
+`swift build` fails while compiling the manifest when the active toolchain is
+the Command Line Tools rather than Xcode.
 
 Package layout --- directories tagged with a phase do not exist yet:
 
