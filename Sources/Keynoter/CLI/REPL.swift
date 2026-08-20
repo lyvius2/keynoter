@@ -182,6 +182,31 @@ final class REPL {
 
     // MARK: - Keynote commands
 
+    /// Binds the session to a document, and forgets what the planner was
+    /// talking about.
+    ///
+    /// The model session outlives a single request so that "make that shorter"
+    /// still has an antecedent — but the transcript describes *this* deck by
+    /// slide number, and after `/close` + `/edit` those numbers point at a
+    /// different presentation. Nothing the planner needs is lost: the deck
+    /// outline rides in every prompt (`PromptBuilder.prompt`), so only the
+    /// conversation goes.
+    ///
+    /// Attaching and detaching go through here rather than calling `Session`
+    /// directly, so a future document command cannot pick up the state reset
+    /// and quietly leave the conversation behind — which is exactly how the
+    /// reset came to be written and never called.
+    private func attachDocument(path: URL, ref: DocumentRef, mode: SessionMode) {
+        session.attach(documentPath: path, ref: ref, mode: mode)
+        planner.client.resetConversation()
+    }
+
+    /// Drops the active document, and the conversation about it.
+    private func detachDocument() {
+        session.closeDocument()
+        planner.client.resetConversation()
+    }
+
     private func handleCreate(_ name: String) async {
         if session.hasDocument {
             Console.warning("A document is already open. Use /close first.")
@@ -194,7 +219,7 @@ final class REPL {
         }
         do {
             let opened = try await controller.createDocument(at: url)
-            session.attach(documentPath: url, ref: opened.ref, mode: .create)
+            attachDocument(path: url, ref: opened.ref, mode: .create)
             // After attach — attaching resets the script buffer along with the
             // rest of the previous document's state.
             session.recordAppleScript(opened.script)
@@ -218,7 +243,7 @@ final class REPL {
         }
         do {
             let opened = try await controller.openDocument(at: url)
-            session.attach(documentPath: url, ref: opened.ref, mode: .edit)
+            attachDocument(path: url, ref: opened.ref, mode: .edit)
             session.recordAppleScript(opened.script)
             Console.success("Opened \(url.lastPathComponent)")
             await refreshSlides()
@@ -260,6 +285,10 @@ final class REPL {
         do {
             let opened = try await controller.saveDocumentAs(document, at: url)
             let previous = session.documentName
+            // Not attachDocument(): the file and the id change, but the deck
+            // does not. Every slide the planner has talked about is still at
+            // the same number, so the conversation stays valid — unlike
+            // /close + /edit, which lands on a different presentation.
             session.switchDocument(to: url, ref: opened.ref)
             session.recordAppleScript(opened.script)
             Console.success("Saved as \(url.lastPathComponent)")
@@ -278,7 +307,7 @@ final class REPL {
         let name = session.documentName ?? ""
         do {
             try await controller.closeDocument(document, save: true)
-            session.closeDocument()
+            detachDocument()
             Console.success("Closed \(name)")
         } catch {
             // Detach regardless. The session is Keynoter's own state, so ending
@@ -286,7 +315,7 @@ final class REPL {
             // the common cause is that the user already closed the document in
             // Keynote, which leaves /save, /close and /create all refusing and
             // no way out but quitting.
-            session.closeDocument()
+            detachDocument()
             Console.warning("Ended the session for \(name), but Keynote reported: \(errorMessage(error))")
         }
     }

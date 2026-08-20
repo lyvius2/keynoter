@@ -89,4 +89,24 @@ struct FoundationModelClientTests {
     func greedySampling() {
         #expect(FoundationModelClient.options == GenerationOptions(sampling: .greedy))
     }
+
+    /// Still no model call: `prewarm()` only opens the session, and the reset is
+    /// pure bookkeeping. Whether the *REPL* resets at the right moments is not
+    /// reachable from here — `PresentationPlanner` holds a concrete client — so
+    /// that part is verified by running Keynoter.
+    @Test("Resetting drops the conversation, so the next document starts clean")
+    @MainActor
+    func resetDropsTheConversation() {
+        let client = FoundationModelClient()
+        #expect(client.hasConversation == false)
+
+        client.prewarm()
+        // Nothing to observe on a Mac that cannot run the model: prewarm is
+        // best-effort and opens no session there.
+        guard FoundationModelClient.availability().isAvailable else { return }
+        #expect(client.hasConversation)
+
+        client.resetConversation()
+        #expect(client.hasConversation == false)
+    }
 }

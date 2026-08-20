@@ -296,6 +296,13 @@ Decisions that hold the planner together:
   have context. On `exceededContextWindowSize` the session is rebuilt and the
   request retried once — the deck outline rides in the prompt, so nothing the
   planner needs is lost.
+- **…but not across documents.** The transcript refers to slides by number, and
+  after `/close` + `/edit` those numbers describe a deck that is no longer open,
+  so attaching or detaching a document resets the conversation — the same reason
+  either one clears the undo history. `/save-as` does *not* reset: the file and
+  the document id change, but the deck does not. Both call sites go through
+  `REPL.attachDocument` / `detachDocument` so a later document command cannot
+  pick up the state reset and leave the conversation behind.
 - **Slide metadata is re-read between actions.** Each applied action shifts the
   numbers the next one was planned against.
 - **A failed step stops the plan.** Later actions assume the slide numbers the

@@ -117,8 +117,20 @@ final class FoundationModelClient {
         return created
     }
 
+    /// Whether a conversation is currently open — that is, whether the next
+    /// request would carry earlier exchanges with it.
+    ///
+    /// Exists so the reset is observable. The bug this guards against was a
+    /// `resetConversation()` that compiled, read correctly, and was never
+    /// called by anything.
+    var hasConversation: Bool { session != nil }
+
     /// Forgets the conversation. The next request starts from the instructions
     /// alone.
+    ///
+    /// Called when the session moves to a different document: the transcript
+    /// refers to slides by number, and those numbers describe the deck that is
+    /// no longer open. See `REPL.attachDocument(path:ref:mode:)`.
     func resetConversation() {
         session = nil
     }
