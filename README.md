@@ -183,6 +183,7 @@ Planned MVP commands:
 | `/open` | Open or focus the active document in Keynote |
 | `/save` | Save the active presentation |
 | `/save-as {filename}` | Write a copy and continue editing it |
+| `/export pdf \| pptx [{path}]` | Export the deck as PDF or PowerPoint |
 | `/undo` | Undo the latest Keynoter operation |
 | `/redo` | Reapply the latest undone operation |
 | `/script` | Show the AppleScript generated for the latest operation |
@@ -312,9 +313,9 @@ enough to build the package. It does not need to be your primary editor.
 
 Keynoter is in **early development**, but the whole pipeline now runs
 end to end. Slash commands parse and dispatch through the REPL, `/doctor`
-reports on the local environment, and the six Keynote-driving commands
-(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`) talk to
-Keynote through AppleScript. `/status` reads live slide metadata back from
+reports on the local environment, and the seven Keynote-driving commands
+(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/export`, `/close`)
+talk to Keynote through AppleScript. `/status` reads live slide metadata back from
 the session's document.
 
 Typing a request in plain language plans a set of changes with Apple's
@@ -336,10 +337,13 @@ Implementation milestones:
 -   [x] document targeting by id, independent of the front window
 -   [x] Foundation Models integration --- natural language to slides
 -   [x] context-window management --- proactive session reset with user notification
+-   [x] PDF and PowerPoint export (`/export pdf`, `/export pptx`)
 
-PDF and PowerPoint export, richer slide layouts (hero, comparison, metric, …),
-master slide selection, theme awareness, and animation support are planned for
-Phase 6.
+Richer slide layouts (hero, comparison, metric, …), master slide selection,
+theme awareness, slide transitions, and slide-based animation alternatives are
+planned for the rest of Phase 6. Keynote's native object builds are not
+scriptable, but staged slides and Magic Move are feasible; they are not yet
+implemented in Keynoter.
 
 ## Development
 
@@ -384,16 +388,16 @@ decisions, read:
 
 Phase 6 --- richer presentations:
 
--   **6a** Keynote AppleScript capability audit (probe what is actually
-    scriptable before designing against it)
--   **6b** `/export pdf` and `/export pptx`
+-   **6a** ✅ Keynote AppleScript capability audit --- results in
+    [`CAPABILITIES.md`](./CAPABILITIES.md)
+-   **6b** ✅ `/export pdf` and `/export pptx`
 -   **6c** `LayoutIntent` replacing `SlideLayout` --- hero, comparison, metric,
     section, and more; master slide selection by index
 -   **6d** Theme awareness --- locale-safe runtime matching instead of
     model-generated theme names
 -   **6e** Tool calling architecture (experimental, after 6c/6d are stable)
--   **6f** Transitions and animations (only if the capability audit confirms
-    AppleScript support)
+-   **6f** Transitions and animation alternatives --- staged slides and Magic
+    Move; native Build In/Out/Action effects are not scriptable
 
 The full phase plan and architectural decisions live in
 [`CLAUDE.md`](./CLAUDE.md).

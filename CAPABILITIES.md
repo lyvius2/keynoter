@@ -15,12 +15,12 @@ ground truth for Phase 6b–6f design decisions.
 | Set master slide on a slide | ✅ YES | `set base slide of newSlide to master slide N of doc` |
 | Read available themes | ✅ YES | `name of theme i of application "Keynote"`; 53 themes on test system |
 | Set slide transition | ✅ YES | Property key is `transition effect`, not `transition type`; reading back fails `-1700` — write-only in practice |
-| Build (entry) animations | ❌ NO | `builds of slide` fails `-1700`; not scriptable |
-| Create / insert new shape | ❌ NO | `make new shape at end of shapes of slide` fails `-10000` every time |
+| Build (entry) animations | ❌ NO (native builds) | Keynote exposes no build class or creation command; use slide transitions, staged slides, or Magic Move instead |
+| Create / insert new shape | ✅ YES | Call `make new shape` inside a `tell slide …` block; `at end of shapes of slide` fails `-10000` |
 | Modify existing shape geometry | ✅ YES | `position`, `width`, `height` are settable on shapes already on a slide |
-| Insert a local image | ❌ NO | `make new image with properties {file:…}` fails `-10000` |
-| Export to PDF | ✅ YES | `export doc to path as PDF`; document must be saved to disk first; use `front document` reference |
-| Export to PPTX | ✅ YES | `export doc to path as Microsoft PowerPoint` |
+| Insert a local image | ✅ YES | Call `make new image` inside a `tell slide …` block; `at end of images of slide` fails `-10000` |
+| Export to PDF | ✅ YES | `export document id "…" to path as PDF`; unsaved edits are included |
+| Export to PPTX | ✅ YES | `export document id "…" to path as Microsoft PowerPoint` |
 
 ---
 
@@ -67,42 +67,88 @@ live list.
 
 ### Export
 
-PDF and PPTX export both require the document to be saved to disk.
-Use `front document` (not `document id "…"`) for the export call; the id
-reference does not survive a save in all cases.
-
 ```applescript
 tell application "Keynote"
-    set exportPath to POSIX file "/path/to/output.pdf"
-    export front document to exportPath as PDF
+    export document id "…" to POSIX file "/path/to/output.pdf" as PDF
 end tell
 ```
 
+**Corrected 2026-08-21, during Phase 6b.** The first pass recorded that export
+needs a `front document` reference and a saved document. Re-probing both claims
+found neither holds, and the first one would have made export the only command
+in Keynoter aimed at whichever window the user last clicked:
+
+| Re-probe | Result |
+|---|---|
+| `export document id "…" … as PDF` | ✅ works — no `front document` needed |
+| `export document id "…" … as Microsoft PowerPoint` | ✅ works |
+| Export with unsaved edits pending | ✅ the edits are in the exported file — no save required |
+| Export onto an existing file | ✅ replaced silently, no prompt, no error |
+| Export into a folder that doesn't exist | ❌ error **6**, as a localized sentence |
+
+The last row is why `/export` checks the destination folder in Swift: Keynote's
+own answer is locale-dependent prose, and Keynoter can say "No such folder:
+<path>" instead.
+
 ### Build animations
 
-`builds of slide` fails with `-1700`. The Keynote AppleScript dictionary does
-not expose build animations. Phase 6f scope is limited to slide transitions.
+Re-probed on 2026-08-22 with Keynote 14.2 (7041.0.109). The supported Keynote
+AppleScript dictionary exposes no build class, element, creation command, or
+object-animation property. Resolving `builds of slide` as an object fails with
+`-1700`, while `make new build` treats `build` as an undefined variable and
+fails with `-2753`.
+
+This means Keynoter cannot add Keynote's native **Build In**, **Build Out**, or
+**Action** effects through the supported Apple Events interface. It does *not*
+mean that every animation-like presentation is impossible. The supported,
+deterministic alternatives are:
+
+- Apply ordinary slide transitions such as dissolve, push, wipe, or move in.
+- Reveal content in stages across consecutive slides.
+- Duplicate a slide, change an item's position, size, or opacity on the copy,
+  and apply **Magic Move** to the source slide.
+
+The last pattern was live-probed: Keynote duplicated the slide, accepted the
+shape geometry and opacity changes, and accepted `magic move` as the source
+slide's transition effect.
+
+These are confirmed AppleScript capabilities, not features already implemented
+in Keynoter. Native builds remain out of scope, and GUI scripting through
+`System Events` is intentionally excluded because it is permission-heavy,
+locale-dependent, and incompatible with the deterministic renderer boundary.
 
 ### Shape and image insertion
 
-`make new shape` and `make new image` both fail with `-10000`
-(Apple event processing failed). Keynote's scripting dictionary lists these
-as creatable, but creation is not implemented at the Apple Events layer.
+Both shapes and local images can be created when the `make` command runs inside
+the target slide's `tell` block:
 
-**Workaround for future consideration:** pre-populate a master slide with
-placeholder shapes in Keynote's GUI; then move/resize them via AppleScript
-(which does work). This is out of scope for Phase 6.
+```applescript
+tell application "Keynote"
+    tell slide 1 of document id "…"
+        set newShape to make new shape with properties ¬
+            {position:{160, 180}, width:360, height:180, object text:"Shape probe"}
+        set newImage to make new image with properties ¬
+            {file:POSIX file "/path/to/image.png", position:{120, 140}, width:320}
+    end tell
+end tell
+```
 
----
+Re-probed 2026-08-22. The shape count increased from 1 to 2, and its position,
+width, height, and text all read back correctly. The image count increased from
+0 to 1, and its file name, position, and width read back correctly.
+
+The original probes used `make new shape at end of shapes of slide` and the
+equivalent `image` form. Those forms still fail with `-10000`; the error means
+the insertion location is invalid here, not that creation is unsupported.
 
 ## Phase 6 Impact
 
 | Phase | Decision |
 |---|---|
-| 6b `/export pdf` | Proceed — confirmed feasible |
-| 6b `/export pptx` | Proceed — confirmed feasible |
+| 6b `/export pdf` | **Done** — targets the document by id, like everything else |
+| 6b `/export pptx` | **Done** |
 | 6c `LayoutIntent` | Proceed — master selection by index is confirmed |
 | 6d Theme awareness | Proceed — runtime enumeration confirmed; name matching required |
 | 6e Tool calling | Unchanged — API design question, not an AppleScript constraint |
-| 6f Transitions | Proceed for **slide transitions only**; build animations are not scriptable |
-| 6f Shapes / images | Out of scope — insertion not available via AppleScript |
+| 6f Animation | Proceed with transitions, staged slides, and Magic Move; native object builds are not scriptable |
+| Shapes / images | Feasible — creation is confirmed inside a `tell slide …` block; phase scope remains undecided |

@@ -180,6 +180,7 @@ MVP 예정 명령어:
 | `/open` | Keynote에서 활성 문서를 열거나 포커스 |
 | `/save` | 활성 프레젠테이션 저장 |
 | `/save-as {filename}` | 사본을 쓰고 그 사본을 계속 편집 |
+| `/export pdf \| pptx [{path}]` | 덱을 PDF 또는 PowerPoint로 내보내기 |
 | `/undo` | 마지막 Keynoter 작업 되돌리기 |
 | `/redo` | 마지막으로 되돌린 작업 다시 적용 |
 | `/script` | 마지막 작업에서 생성된 AppleScript 표시 |
@@ -308,8 +309,8 @@ macOS 26 SDK에서 제공되며, Command Line Tools만으로는 이 패키지를
 
 Keynoter는 **초기 개발 단계**에 있지만, 파이프라인 전체가 이제 끝에서 끝까지
 동작합니다. 슬래시 명령어는 REPL에서 파싱되고 디스패치되며, `/doctor`는 로컬
-실행 환경을 점검하고, Keynote를 조작하는 여섯 개의 명령어
-(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/close`)는 AppleScript로
+실행 환경을 점검하고, Keynote를 조작하는 일곱 개의 명령어
+(`/create`, `/edit`, `/open`, `/save`, `/save-as`, `/export`, `/close`)는 AppleScript로
 Keynote와 통신합니다. `/status`는 세션이 붙잡은 문서에서 슬라이드 메타데이터를
 실시간으로 읽어 옵니다.
 
@@ -331,9 +332,12 @@ Keynote와 통신합니다. `/status`는 세션이 붙잡은 문서에서 슬라
 -   [x] 전면 창과 무관하게 id로 문서 지목
 -   [x] Foundation Models 통합 — 자연어에서 슬라이드까지
 -   [x] 컨텍스트 윈도우 관리 — 선제적 세션 리셋 및 사용자 알림
+-   [x] PDF·PowerPoint 내보내기 (`/export pdf`, `/export pptx`)
 
-PDF·PowerPoint 내보내기, 더 풍부한 슬라이드 레이아웃(hero, comparison, metric 등),
-master slide 선택, 테마 인식, 애니메이션 지원은 Phase 6에서 계획되어 있습니다.
+더 풍부한 슬라이드 레이아웃(hero, comparison, metric 등), master slide 선택,
+테마 인식, 슬라이드 전환, 슬라이드 기반 애니메이션 대안은 Phase 6의 남은
+단계에서 계획되어 있습니다. Keynote의 네이티브 객체 build는 스크립트할 수 없지만,
+단계별 슬라이드와 Magic Move는 구현 가능하며 아직 Keynoter에는 들어가지 않았습니다.
 
 ## 개발
 
@@ -377,13 +381,15 @@ keynoter/
 
 Phase 6 — 더 풍부한 프레젠테이션:
 
--   **6a** Keynote AppleScript 역량 감사 (설계 전에 실제로 스크립트 가능한 것 확인)
--   **6b** `/export pdf` 및 `/export pptx`
+-   **6a** ✅ Keynote AppleScript 역량 감사 — 결과는
+    [`CAPABILITIES.md`](./CAPABILITIES.md)
+-   **6b** ✅ `/export pdf` 및 `/export pptx`
 -   **6c** `SlideLayout`을 `LayoutIntent`로 교체 — hero, comparison, metric, section 등;
     인덱스 기반 master slide 선택
 -   **6d** 테마 인식 — 모델이 생성한 테마 이름 대신 런타임 로케일 안전 매칭
 -   **6e** Tool calling 아키텍처 (실험적, 6c/6d 안정화 이후)
--   **6f** 전환 및 애니메이션 (역량 감사에서 AppleScript 지원이 확인될 때만)
+-   **6f** 전환 및 애니메이션 대안 — 단계별 슬라이드와 Magic Move;
+    네이티브 Build In/Out/Action 효과는 스크립트 불가
 
 전체 단계 계획 및 아키텍처 결정 사항은 [`CLAUDE_KR.md`](./CLAUDE_KR.md)에 있습니다.
 

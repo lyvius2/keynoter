@@ -199,6 +199,7 @@ undo와 redo는 별도의 메커니즘이 아니다. 같은 렌더러를 통해 
 | `/open` | 활성 문서를 Keynote 전면으로 가져오기 |
 | `/save` | 활성 문서 저장 |
 | `/save-as <name>` | 사본을 쓴 뒤 그 사본을 계속 편집 (원본은 닫힘) |
+| `/export <pdf\|pptx> [<경로>]` | 덱을 PDF 또는 PowerPoint로 내보내기 |
 | `/undo` | Keynoter가 수행한 마지막 액션 되돌리기 |
 | `/redo` | 마지막으로 되돌린 액션 다시 적용 |
 | `/script` | 마지막 작업의 AppleScript 출력 |
@@ -206,7 +207,26 @@ undo와 redo는 별도의 메커니즘이 아니다. 같은 렌더러를 통해 
 | `/close` | 세션 종료 (REPL은 계속 실행) |
 | `/exit` | 종료 (저장되지 않은 변경이 있으면 경고) |
 
-MVP 이후: `/export pdf`, `/export pptx`
+### 내보내기
+
+`/export pdf`는 `demo.key` 옆에 `demo.pdf`를 쓰고, `/export pdf <경로>`는
+지정한 위치에 쓴다. 확장자는 교체하지 않고 덧붙이므로 `/export pdf demo.key`는
+`demo.key.pdf`가 되어, 오타가 난 내보내기가 원본 프레젠테이션을 덮어쓸 수 없다.
+
+- **`/save`를 먼저 할 필요가 없다.** Keynote는 메모리에 있는 상태 그대로
+  내보내므로 저장하지 않은 편집분도 포함된다 — 추정이 아니라 확인한 사실이다.
+- **기존 파일은 덮어쓴다.** 다시 내보내는 것이 정상적인 사용이기 때문이다.
+  묻지 않고 덮어쓴 뒤 그 사실을 알리며, 이는 "입력 한 줄이 결정 하나"라는
+  원칙을 지키기 위한 것이다.
+- **대상 폴더가 없으면 Swift 쪽에서 잡는다.** Keynote의 응답은 `(6)`으로 끝나는
+  로케일 의존 문장이므로, `No such folder: <경로>`가 더 낫다.
+
+**내보내기는 `PresentationAction`이 아니다** — Phase 6b 최초 계획과는 다르다.
+덱을 읽어 별도 파일을 쓸 뿐 프레젠테이션 자체는 그대로이므로, `/save`·`/open`과
+같은 세션 계층에 속한다. `ActionRunner`를 태웠다면 일어나지도 않은 변경으로
+세션을 modified로 표시했을 것이고, 역함수가 없는 액션이므로 PDF 하나를 만드는
+대가로 undo 히스토리 전체를 버렸을 것이다. 플래너가 이를 생성할 수단도 없는데,
+이는 `createPresentation`이 받는 것과 같은 보장이며 이유도 같다.
 
 ### 저장되지 않은 변경이 있을 때의 종료
 
@@ -426,34 +446,48 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 Phase 6는 순차적인 하위 단계로 나뉜다. 각 하위 단계는 명확한 진입 조건을 가지며,
 선행 단계가 검증되기 전에는 다음 단계를 시작하지 않는다.
 
-#### Phase 6a — Keynote 자동화 역량 감사 (코드보다 먼저)
+#### Phase 6a — Keynote 자동화 역량 감사 (완료)
 
-작은 AppleScript 프로브를 실행해 Keynote가 실제로 무엇을 노출하는지 확인한다.
-모든 결과는 저장소 루트의 `CAPABILITIES.md`에 기록하며, 이 파일이 Phase 6b~6f
-결정의 근거가 된다.
+작은 AppleScript 프로브로 Keynote가 실제로 무엇을 노출하는지 확인했다.
+**저장소 루트의 `CAPABILITIES.md`가 그 결과이자 6b~6f의 근거**이며, 프로브
+스크립트와 실패 오류 코드까지 담고 있다. 요약:
 
-| 기능 | 프로브 | 상태 |
-|---|---|---|
-| master slide 열거 | `master slides of document id "…"` | 조사 예정 |
-| 새 슬라이드에 master 지정 | `set base slide of newSlide to master slide N` | 조사 예정 |
-| 사용 가능한 테마 읽기 | `themes of application "Keynote"` | 조사 예정 |
-| 슬라이드 전환 설정 | `transition properties of slide N` | 조사 예정 |
-| build 애니메이션 추가 | `make new build` | 조사 예정 |
-| 도형 삽입 및 위치 지정 | `make new shape with properties {position: …}` | 조사 예정 |
-| 로컬 이미지 삽입 | `make new image with properties {file: …}` | 조사 예정 |
-| PDF 내보내기 | `export document as PDF to …` | 조사 예정 |
-| PPTX 내보내기 | `export document as Microsoft PowerPoint to …` | 조사 예정 |
+| 기능 | 결과 |
+|---|---|
+| master slide 열거 | ✅ 인덱스 순회; `as list`는 `-1700` 실패 |
+| 새 슬라이드에 master 지정 | ✅ `set base slide of newSlide to master slide N of doc` |
+| 사용 가능한 테마 읽기 | ✅ 이름이 로케일 의존이므로 런타임 매칭 필수 |
+| 슬라이드 전환 설정 | ✅ 쓰기 전용; `magic move` 포함; 키는 `transition effect` |
+| 네이티브 build 애니메이션 추가 | ❌ build class나 생성 command가 노출되지 않음 |
+| 슬라이드로 애니메이션 대체 | ✅ 단계별 슬라이드 또는 복제 + 위치·크기·투명도 변경 + Magic Move |
+| 도형·텍스트 아이템·선·이미지·표 생성 | ✅ **`tell slide …` 블록 안에서만** |
+| 데이터가 있는 차트 추가 | ✅ `add chart`, 슬라이드를 직접 매개변수로 |
+| 아이템 이동·크기·회전·삭제 | ✅ `position`, `width`, `height`, `rotation`, `opacity` |
+| 아이템 텍스트 스타일 | ✅ `object text`의 `font`, `size`, `color` |
+| 도형 채우기 색 지정 | ❌ `background fill type`이 읽기 전용 |
+| PDF·PPTX·슬라이드 이미지 내보내기 | ✅ document id로 가능, 미저장 편집분 포함 |
 
-**완료 기준:** `CAPABILITIES.md`의 모든 항목에 확인된 가능/불가 결과와
-동작하거나 실패하는 프로브 스크립트가 있어야 한다.
+여기 표는 요약이지 원본이 아니다. 재프로브 결과가 다르면 `CAPABILITIES.md`를
+먼저 고친다. Phase 6b와 위의 도형·이미지 항목이 바로 그렇게 나왔다 —
+**`-10000`과 `-1700`은 "지원 안 함"만큼이나 자주 "구문이 틀렸음"을 뜻하며**,
+1차 감사는 실제로는 ✅인 두 항목을 ❌로 기록했다.
 
-#### Phase 6b — `/export pdf` 및 `/export pptx`
+#### Phase 6b — `/export pdf` 및 `/export pptx` (완료)
 
-내보내기는 역량 감사와 무관하다 — Keynote의 `export` 명령은 공식 문서화된 API다.
-새 `PresentationAction.exportPresentation(format:path:)`, 렌더러 템플릿,
-`/export pdf [<경로>]` / `/export pptx [<경로>]` 명령어를 추가한다.
+`ExportFormat` · `KeynoteController.exportDocument` · `/export <pdf|pptx> [<경로>]`
 
-**완료 기준:** `/export pdf`가 `.key` 파일 옆에 읽을 수 있는 PDF를 생성한다.
+최초 계획에서 두 가지가 달라졌고, 둘 다 실제로 만들어 보고 정해졌다:
+
+- **`PresentationAction.exportPresentation`을 만들지 않았다.** 내보내기는 콘텐츠
+  파이프라인이 아니라 세션 계층에 속한다 — 반대로 갔을 때의 대가는 위의
+  *내보내기* 절 참조.
+- **문서는 다른 모든 스크립트와 마찬가지로 id로 지정한다.** `CAPABILITIES.md`에는
+  내보내기가 `front document`를 필요로 한다고 적혀 있었으나, 재프로브 결과
+  그렇지 않았고 해당 기록은 수정했다.
+
+**완료:** `/export pdf`는 `.key` 파일 옆에 읽을 수 있는 1페이지 PDF를,
+`/export pptx`는 유효한 `.pptx`를 만든다. 저장하지 않은 편집 뒤 내보내면 그
+편집분이 포함되며, `Modified`와 undo 깊이는 그대로 유지된다.
 
 #### Phase 6c — Master Slide 선택 및 `LayoutIntent`
 
@@ -533,15 +567,28 @@ Keynoter가 즉시 실행한 뒤 모델이 계속 진행한다.
 현재의 구조화 생성 방식은 핵심 사용 사례를 잘 처리한다. 복잡한 레이아웃에서
 다단계 계획이 불안정하다고 판명될 때만 tool calling을 도입한다.
 
-#### Phase 6f — 전환(Transition) 및 애니메이션
+#### Phase 6f — 전환(Transition) 및 애니메이션 대안
 
-역량 감사(6a)에서 `transition properties`와 build 애니메이션이 AppleScript로
-설정 가능하다고 확인될 때만 진행한다. 불가하면 이 단계를 건너뛴다.
+Keynote의 네이티브 Build In, Build Out, Action 효과는 지원되는 AppleScript
+사전에 노출되지 않는다. 따라서 이 효과를 렌더링한다고 주장하는 `AnimationSpec`을
+추가하지 않으며, `System Events`를 이용한 GUI 스크립팅도 우회책으로 사용하지 않는다.
 
-가능한 경우:
-- `SlideSpec`에 새 `TransitionSpec` 타입 추가
-- build-in / build-out 시퀀스용 새 `AnimationSpec`
-- 확인된 각 스크립트 가능 전환 유형별 렌더러 템플릿
+대신 다음과 같은 스크립트 가능한 기본 요소로 애니메이션과 유사한 프레젠테이션을
+만들 수 있다:
+
+- 확인된 슬라이드 전환 효과를 위한 `TransitionSpec` 추가
+- 연속 슬라이드에 콘텐츠를 단계적으로 드러내기
+- 슬라이드를 복제하고 사본에서 아이템의 위치·크기·투명도를 바꾼 뒤 원본
+  슬라이드에 Magic Move 적용
+- 모든 작업은 구조화 액션 → 검증 → 결정론적 렌더러 파이프라인 안에서 수행하며,
+  이 대안 때문에 안전 경계를 완화하지 않음
+
+Magic Move 패턴은 실제 환경에서 성공적으로 재검증했다. 다만 shape와 image가
+검증된 도메인 액션으로 표현된 뒤에만 Keynoter 구현 범위가 되며, 그전까지 이 절은
+현재 제품 기능이 아니라 확인된 역량을 기록한다.
+
+**완료 기준:** 네이티브 build나 GUI 스크립팅 없이 일반 전환 하나와 검증 가능한
+2슬라이드 Magic Move 시퀀스 하나를 Keynoter가 생성한다.
 
 ---
 

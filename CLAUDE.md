@@ -200,6 +200,7 @@ Rules that follow from this:
 | `/open` | Bring active document to foreground in Keynote |
 | `/save` | Save active document |
 | `/save-as <name>` | Write a copy, then continue editing it (original is closed) |
+| `/export <pdf\|pptx> [<path>]` | Write the deck out as PDF or PowerPoint |
 | `/undo` | Revert last Keynoter-driven action |
 | `/redo` | Reapply last undone action |
 | `/script` | Print AppleScript from last operation |
@@ -207,7 +208,29 @@ Rules that follow from this:
 | `/close` | Close session, keep REPL running |
 | `/exit` | Quit (warn if unsaved changes) |
 
-Post-MVP: `/export pdf`, `/export pptx`
+### Exporting
+
+`/export pdf` writes `demo.pdf` beside `demo.key`; `/export pdf <path>` puts it
+where you say. The extension is appended, never swapped, so `/export pdf
+demo.key` produces `demo.key.pdf` and a mistyped export cannot land on the
+presentation it came from.
+
+- **No `/save` first.** Keynote exports the document as it stands in memory,
+  unsaved edits included — verified, not assumed.
+- **An existing file is replaced**, because re-exporting is the normal thing to
+  do. Keynoter says when that happened rather than asking first, keeping to the
+  rule that one input line is one decision.
+- **A missing destination folder is caught in Swift.** Keynote's own answer is a
+  localized sentence ending in `(6)`; `No such folder: <path>` is better.
+
+**Export is not a `PresentationAction`,** despite what the Phase 6b plan
+originally said. It reads the deck and writes a separate file — the
+presentation itself is untouched — so it sits with `/save` and `/open` on the
+session side. Routing it through `ActionRunner` would have marked the session
+modified over a change that never happened, and, since an export has no
+inverse, discarded the entire undo history as the price of producing a PDF.
+The planner has no way to emit it either, which is the same guarantee
+`createPresentation` gets and for the same reason.
 
 ### Quitting with unsaved changes
 
@@ -436,34 +459,43 @@ management (done: proactive round-limit reset + `onConversationReset` callback)
 Phase 6 is split into sequential sub-phases. Each sub-phase has a clear entry
 condition; do not begin one before its predecessor is verified.
 
-#### Phase 6a — Keynote Automation Capability Audit (do first, before any code)
+#### Phase 6a — Keynote Automation Capability Audit (done)
 
-Run small AppleScript probes to determine what Keynote actually exposes. Record
-every result in `CAPABILITIES.md` in the repo root. That file becomes the
-ground truth for all Phase 6b–6f decisions.
+Small AppleScript probes established what Keynote actually exposes.
+**`CAPABILITIES.md` in the repo root is the result and the ground truth for
+6b–6f** — including the probe scripts and the failing error codes. The summary:
 
-| Capability | Probe | Status |
-|---|---|---|
-| Enumerate master slides | `master slides of document id "…"` | TBD |
-| Select master for new slide | `set base slide of newSlide to master slide N` | TBD |
-| Read available themes | `themes of application "Keynote"` | TBD |
-| Set slide transition | `transition properties of slide N` | TBD |
-| Add build animation | `make new build` | TBD |
-| Insert and position shape | `make new shape with properties {position: …}` | TBD |
-| Insert local image | `make new image with properties {file: …}` | TBD |
-| Export to PDF | `export document as PDF to …` | TBD |
-| Export to PPTX | `export document as Microsoft PowerPoint to …` | TBD |
+| Capability | Result |
+|---|---|
+| Enumerate master slides | ✅ index by index; `as list` fails `-1700` |
+| Select master for new slide | ✅ `set base slide of newSlide to master slide N of doc` |
+| Read available themes | ✅ names are locale-specific, so match at runtime |
+| Set slide transition | ✅ write-only; includes `magic move`; the key is `transition effect` |
+| Add native build animation | ❌ no build class or creation command is exposed |
+| Simulate animation with slides | ✅ staged slides or duplicate + geometry/opacity changes + Magic Move |
+| Insert shape / image | ✅ call `make new …` inside a `tell slide …` block |
+| Move and resize an existing shape | ✅ `position`, `width`, `height` are settable |
+| Export to PDF / PPTX | ✅ by document id, unsaved edits included |
 
-**Done when:** every row in `CAPABILITIES.md` has a confirmed Yes/No and a
-working or failing probe script.
+A row here is a summary, not the source: correct `CAPABILITIES.md` first when a
+re-probe disagrees with it, as Phase 6b did for export.
 
-#### Phase 6b — `/export pdf` and `/export pptx`
+#### Phase 6b — `/export pdf` and `/export pptx` (done)
 
-Export is independent of the capability audit — Keynote's `export` command is
-documented API. New `PresentationAction.exportPresentation(format:path:)`,
-renderer template, and `/export pdf [<path>]` / `/export pptx [<path>]` commands.
+`ExportFormat` · `KeynoteController.exportDocument` · `/export <pdf|pptx> [<path>]`
 
-**Done when:** `/export pdf` produces a readable PDF next to the `.key` file.
+Two departures from the original plan, both settled by building it:
+
+- **No `PresentationAction.exportPresentation`.** Export belongs to the session
+  layer, not the content pipeline — see *Exporting* above for what going the
+  other way would have cost.
+- **The document is named by id**, like every other script. `CAPABILITIES.md`
+  had recorded that export needs `front document`; re-probing found it does
+  not, and that note is now corrected.
+
+**Done:** `/export pdf` writes a readable 1-page PDF beside the `.key` file,
+`/export pptx` a valid `.pptx`, and an export run after an unsaved edit
+contains that edit while leaving `Modified` and the undo depth untouched.
 
 #### Phase 6c — Master Slide Selection and `LayoutIntent`
 
@@ -544,15 +576,28 @@ Cost: 8× more model round-trips per request — a full deck takes much longer.
 current structured-generation approach handles the core use case well. Adopt
 tool calling only if multi-step plans prove unreliable for complex layouts.
 
-#### Phase 6f — Transitions and Animations
+#### Phase 6f — Transitions and Animation Alternatives
 
-Only if the capability audit (6a) confirms that `transition properties` and
-build animations are settable via AppleScript. Otherwise skip.
+Keynote's native Build In, Build Out, and Action effects are not exposed through
+its supported AppleScript dictionary. Do not add an `AnimationSpec` that claims
+to render those effects, and do not use `System Events` UI scripting as a
+workaround.
 
-If feasible:
-- New `TransitionSpec` type on `SlideSpec`
-- New `AnimationSpec` for build-in / build-out sequences
-- Renderer templates for each confirmed scriptable transition type
+Animation-like presentations are still feasible through scriptable primitives:
+
+- Add a `TransitionSpec` for confirmed slide transition effects.
+- Reveal content in stages across consecutive slides.
+- Duplicate a slide, change item position, size, or opacity on the copy, and
+  apply Magic Move to the source slide.
+- Keep every operation in the structured action → validation → deterministic
+  renderer pipeline; these alternatives do not relax the safety boundary.
+
+The Magic Move pattern was live-probed successfully. It becomes Keynoter scope
+only after shapes and images are represented as validated domain actions; until
+then this section records capability, not current product behavior.
+
+**Done when:** Keynoter can apply a normal transition and produce one verified
+two-slide Magic Move sequence without using native builds or GUI scripting.
 
 ---
 

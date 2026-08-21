@@ -58,6 +58,33 @@ struct KeynoteControllerScriptTests {
         #expect(KeynoteController.saveAsScript(document: deck, path: "/tmp/copy.key") == expected)
     }
 
+    @Test("exportScript names the document by id, never the front one", arguments: [
+        (ExportFormat.pdf, "/tmp/deck.pdf", "PDF"),
+        (.pptx, "/tmp/deck.pptx", "Microsoft PowerPoint")
+    ])
+    func exportScript(format: ExportFormat, path: String, constant: String) {
+        let expected = """
+        tell application "Keynote"
+            export \(deckSpecifier) to POSIX file "\(path)" as \(constant)
+        end tell
+        """
+        #expect(KeynoteController.exportScript(document: deck, path: path, format: format) == expected)
+        // The whole point of the id: an export must not follow whichever window
+        // the user last clicked.
+        #expect(!KeynoteController.exportScript(document: deck, path: path, format: format)
+            .contains("front document"))
+    }
+
+    @Test("An export path with quotes is escaped like every other literal")
+    func exportScriptEscapesPath() {
+        let script = KeynoteController.exportScript(
+            document: deck,
+            path: #"/tmp/say "hi".pdf"#,
+            format: .pdf
+        )
+        #expect(script.contains(#"POSIX file "/tmp/say \"hi\".pdf""#))
+    }
+
     @Test("closeScript with save uses `saving yes`")
     func closeScriptSave() {
         let expected = """

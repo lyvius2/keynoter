@@ -58,4 +58,49 @@ struct PathResolverTests {
             .standardizedFileURL
         #expect(url.path == expected.path)
     }
+
+    // MARK: - Export extensions
+
+    @Test("Export extensions follow the same rules", arguments: [
+        ("deck", "pdf", "/tmp/deck.pdf"),
+        ("deck.pdf", "pdf", "/tmp/deck.pdf"),
+        ("Deck.PDF", "pdf", "/tmp/Deck.PDF"),
+        ("deck", "pptx", "/tmp/deck.pptx")
+    ])
+    func exportExtensions(input: String, ext: String, expected: String) {
+        #expect(PathResolver.resolvePath(input, extension: ext, relativeTo: cwd).path == expected)
+    }
+
+    /// The extension is appended, never swapped — so an export aimed at a `.key`
+    /// path lands beside the presentation rather than on top of it.
+    @Test("A .key path is never turned into the export target itself")
+    func neverOverwritesTheDeck() {
+        let url = PathResolver.resolvePath("demo.key", extension: "pdf", relativeTo: cwd)
+        #expect(url.path == "/tmp/demo.key.pdf")
+    }
+}
+
+@Suite("ExportFormat")
+struct ExportFormatTests {
+
+    @Test("Every format parses back from its own keyword", arguments: ExportFormat.allCases)
+    func roundTrip(format: ExportFormat) {
+        #expect(ExportFormat.parse(format.rawValue) == format)
+        #expect(ExportFormat.parse(format.rawValue.uppercased()) == format)
+    }
+
+    @Test("Aliases land on PowerPoint", arguments: ["ppt", "powerpoint", "PowerPoint"])
+    func powerPointAliases(text: String) {
+        #expect(ExportFormat.parse(text) == .pptx)
+    }
+
+    @Test("Anything else is not a format", arguments: ["", "docx", "key", "pd"])
+    func unknown(text: String) {
+        #expect(ExportFormat.parse(text) == nil)
+    }
+
+    @Test("The keyword list is what /help and the usage string show")
+    func keywordList() {
+        #expect(ExportFormat.keywordList == "pdf|pptx")
+    }
 }

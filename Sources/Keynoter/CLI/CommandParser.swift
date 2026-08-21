@@ -15,11 +15,17 @@ enum CommandParser {
         case failure(ParseError)
     }
 
-    enum ParseError: Equatable {
+    /// Conforms to `Error` so `Command.make` can report through `Result`.
+    /// Nothing throws one — the parser stays a pure function that returns
+    /// `Input.failure` — but the name was always an error's name.
+    enum ParseError: Error, Equatable {
         case emptyCommand
         case unknownCommand(keyword: String)
         case missingArgument(usage: String)
         case unexpectedArgument(keyword: String)
+        /// The argument was present but not one this command accepts —
+        /// `/export docx`. `detail` names what was wrong with it.
+        case invalidArgument(usage: String, detail: String)
 
         var message: String {
             switch self {
@@ -31,6 +37,8 @@ enum CommandParser {
                 "Missing argument. Usage: \(usage)"
             case .unexpectedArgument(let keyword):
                 "'/\(keyword)' takes no arguments."
+            case .invalidArgument(let usage, let detail):
+                "\(detail) Usage: \(usage)"
             }
         }
     }
@@ -59,15 +67,18 @@ enum CommandParser {
             return .failure(.unexpectedArgument(keyword: spec.keyword))
         }
 
-        guard let command = Command.make(keyword: spec.keyword, argument: argument) else {
-            return .failure(.unknownCommand(keyword: keyword))
+        switch Command.make(keyword: spec.keyword, argument: argument) {
+        case .success(let command): return .command(command)
+        case .failure(let error): return .failure(error)
         }
-        return .command(command)
     }
 
     // MARK: - Helpers
 
-    private static func splitFirstToken(_ text: String) -> (token: String, remainder: String) {
+    /// Internal rather than private: `Command.makeExport` splits the format off
+    /// the front of its argument, and tokenizing input is this type's job, not
+    /// something to reimplement next to the command it happens to serve.
+    static func splitFirstToken(_ text: String) -> (token: String, remainder: String) {
         guard let space = text.firstIndex(where: { $0.isWhitespace }) else {
             return (text, "")
         }
@@ -77,7 +88,11 @@ enum CommandParser {
     }
 
     /// Strips one layer of matching surrounding quotes. Returns `nil` for a blank argument.
-    private static func unquoted(_ text: String) -> String? {
+    ///
+    /// Internal for the same reason as `splitFirstToken`: `/export pdf "my
+    /// deck.pdf"` quotes only the path, so the quotes have to come off the
+    /// second half after the format is split away.
+    static func unquoted(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
 

@@ -100,6 +100,8 @@ final class REPL {
             await handleSave()
         case .saveAs(let name):
             await handleSaveAs(name)
+        case .export(let format, let path):
+            await handleExport(format: format, path: path)
         case .close:
             await handleClose()
 
@@ -322,6 +324,62 @@ final class REPL {
         } catch {
             reportError(error)
         }
+    }
+
+    /// Writes the deck out as PDF or PowerPoint.
+    ///
+    /// Not a `PresentationAction`, and so nowhere near `ActionRunner`: export
+    /// produces a second file and leaves the presentation exactly as it was.
+    /// Running it through the action pipeline would mark the session modified
+    /// over a change that never happened and — since an export has no inverse —
+    /// throw away the undo history as the price of a PDF.
+    ///
+    /// No `/save` first, either: Keynote exports the document as it stands in
+    /// memory, unsaved edits included.
+    private func handleExport(format: ExportFormat, path: String?) async {
+        guard let document = activeDocument() else { return }
+        guard let destination = exportDestination(format: format, path: path) else { return }
+
+        // Keynote's own answer to a missing folder is a localized sentence
+        // ending in "(6)"; checking here turns it into something readable, and
+        // in the user's own path wording.
+        let folder = destination.deletingLastPathComponent()
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            Console.failure("No such folder: \(folder.path)")
+            return
+        }
+
+        // Keynote replaces an existing file silently. Re-exporting is the
+        // normal thing to do, so the overwrite is allowed — but it is said out
+        // loud, because the path may well be one the user typed by hand.
+        let replacing = FileManager.default.fileExists(atPath: destination.path)
+
+        do {
+            let script = try await controller.exportDocument(document, to: destination, as: format)
+            session.recordAppleScript(script)
+            Console.success("Exported \(format.displayName) to \(destination.path)")
+            if replacing {
+                Console.info("  (replaced the file already at that path)")
+            }
+        } catch {
+            reportError(error)
+        }
+    }
+
+    /// Where an export lands: the path the user gave, or — with no path — the
+    /// document's own, with the format's extension. `/export pdf` on
+    /// `~/Decks/demo.key` writes `~/Decks/demo.pdf`.
+    private func exportDestination(format: ExportFormat, path: String?) -> URL? {
+        if let path {
+            return PathResolver.resolvePath(path, extension: format.fileExtension)
+        }
+        guard let documentPath = session.documentPath else {
+            Console.warning(ActionRunnerError.noDocument.userMessage)
+            return nil
+        }
+        return documentPath.deletingPathExtension().appendingPathExtension(format.fileExtension)
     }
 
     private func handleClose() async {

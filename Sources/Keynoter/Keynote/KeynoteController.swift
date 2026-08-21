@@ -59,6 +59,22 @@ struct KeynoteController: Sendable {
         return (try await runReturningRef(script), script)
     }
 
+    /// Writes `document` out to `path` in `format`, leaving the document itself
+    /// untouched and still open.
+    ///
+    /// Probed on macOS 26: the export reflects **unsaved** edits, so there is no
+    /// need to save first — what you see in Keynote is what lands in the file.
+    /// An existing file at `path` is replaced without complaint, which is why
+    /// the REPL says so when it happens.
+    @discardableResult
+    func exportDocument(
+        _ document: DocumentRef,
+        to path: URL,
+        as format: ExportFormat
+    ) async throws -> String {
+        try await run(Self.exportScript(document: document, path: path.path, format: format))
+    }
+
     /// Closes `document`. `save == true` writes pending changes, `false`
     /// discards them.
     @discardableResult
@@ -156,6 +172,24 @@ struct KeynoteController: Sendable {
             close sourceDoc saving no
             set newDoc to open POSIX file "\(quoted)"
             return id of newDoc
+        end tell
+        """
+    }
+
+    /// `CAPABILITIES.md` recorded that export needs a `front document`
+    /// reference. Re-probed: `export document id "…"` works for both formats,
+    /// so the document is named by id here like everywhere else. The audit note
+    /// has been corrected.
+    ///
+    /// The format arrives as an AppleScript enumerator (`PDF`, `Microsoft
+    /// PowerPoint`) and so is interpolated bare — it is a constant from
+    /// `ExportFormat`, never text a user or a model supplied. The path is the
+    /// only caller-supplied value, and it is escaped.
+    static func exportScript(document: DocumentRef, path: String, format: ExportFormat) -> String {
+        let quoted = escapeAppleScriptString(path)
+        return """
+        tell application "Keynote"
+            export \(document.specifier) to POSIX file "\(quoted)" as \(format.appleScriptConstant)
         end tell
         """
     }
