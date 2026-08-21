@@ -82,15 +82,15 @@ enum Doctor {
         guard let developerDir, !developerDir.isEmpty else {
             return Check(
                 name: "Xcode toolchain",
-                severity: .fail,
-                detail: "xcode-select did not report a developer directory"
+                severity: .warn,
+                detail: "xcode-select did not report a developer directory (build only — not needed to run a pre-built binary)"
             )
         }
         if developerDir.contains("CommandLineTools") {
             return Check(
                 name: "Xcode toolchain",
-                severity: .fail,
-                detail: "\(developerDir) — Command Line Tools cannot build this package. Run: sudo xcode-select -s /Applications/Xcode.app"
+                severity: .warn,
+                detail: "Command Line Tools active — sufficient to run, but cannot build. To build: sudo xcode-select -s /Applications/Xcode.app"
             )
         }
         if developerDir.contains("Xcode") {
@@ -99,7 +99,7 @@ enum Doctor {
         return Check(
             name: "Xcode toolchain",
             severity: .warn,
-            detail: "\(developerDir) — unrecognized toolchain path; the FoundationModels SDK may be missing"
+            detail: "\(developerDir) — unrecognized toolchain path; building may fail"
         )
     }
 

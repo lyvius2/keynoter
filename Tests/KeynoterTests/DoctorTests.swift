@@ -43,16 +43,16 @@ struct DoctorEvaluatorTests {
         #expect(check.severity == .ok)
     }
 
-    @Test("A Command Line Tools path fails and points at xcode-select")
+    @Test("A Command Line Tools path warns (sufficient to run, not to build) and mentions xcode-select")
     func toolchainCommandLineTools() {
         let check = Doctor.toolchainCheck("/Library/Developer/CommandLineTools")
-        #expect(check.severity == .fail)
+        #expect(check.severity == .warn)
         #expect(check.detail.contains("xcode-select"))
     }
 
-    @Test("A missing toolchain path fails", arguments: [nil, ""])
+    @Test("A missing toolchain path warns (build only — running a pre-built binary needs none)", arguments: [nil, ""])
     func toolchainMissing(_ path: String?) {
-        #expect(Doctor.toolchainCheck(path).severity == .fail)
+        #expect(Doctor.toolchainCheck(path).severity == .warn)
     }
 
     @Test("An unrecognized toolchain path warns")
