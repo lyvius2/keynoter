@@ -416,12 +416,132 @@ XCTest가 아니라 Swift Testing(`import Testing`, `@Test`, `#expect`)을 사�
 플래너는 `createPresentation`을 내지 않으므로 테마 이름이 렌더러까지 닿지 않는다.
 영문 테마 이름 매핑은 `/create`가 테마 인자를 받게 될 때(Phase 6) 비로소 실제 작업이 된다.
 
-### Phase 5 — 다듬기 (현재 단계)
-진행 상황 표시 (완료) · Apple Intelligence를 사용할 수 없을 때의 우아한 성능
-저하(graceful degradation) · `/exit` 시 미저장 변경 경고 (완료) · 컨텍스트 윈도우 관리
+### Phase 5 — 다듬기 (완료)
+진행 상황 표시 (완료) · Apple Intelligence 사용 불가 시 우아한 성능 저하 (완료)
+· `/exit` 시 미저장 변경 경고 (완료) · 컨텍스트 윈도우 관리 (완료: 라운드 제한
+선제적 리셋 + `onConversationReset` 콜백)
 
-### Phase 6 — MVP 이후
-`/export pdf` · `/export pptx` · 테마 · 발표자 노트 · 더 다양한 레이아웃
+### Phase 6 — 더 풍부한 프레젠테이션
+
+Phase 6는 순차적인 하위 단계로 나뉜다. 각 하위 단계는 명확한 진입 조건을 가지며,
+선행 단계가 검증되기 전에는 다음 단계를 시작하지 않는다.
+
+#### Phase 6a — Keynote 자동화 역량 감사 (코드보다 먼저)
+
+작은 AppleScript 프로브를 실행해 Keynote가 실제로 무엇을 노출하는지 확인한다.
+모든 결과는 저장소 루트의 `CAPABILITIES.md`에 기록하며, 이 파일이 Phase 6b~6f
+결정의 근거가 된다.
+
+| 기능 | 프로브 | 상태 |
+|---|---|---|
+| master slide 열거 | `master slides of document id "…"` | 조사 예정 |
+| 새 슬라이드에 master 지정 | `set base slide of newSlide to master slide N` | 조사 예정 |
+| 사용 가능한 테마 읽기 | `themes of application "Keynote"` | 조사 예정 |
+| 슬라이드 전환 설정 | `transition properties of slide N` | 조사 예정 |
+| build 애니메이션 추가 | `make new build` | 조사 예정 |
+| 도형 삽입 및 위치 지정 | `make new shape with properties {position: …}` | 조사 예정 |
+| 로컬 이미지 삽입 | `make new image with properties {file: …}` | 조사 예정 |
+| PDF 내보내기 | `export document as PDF to …` | 조사 예정 |
+| PPTX 내보내기 | `export document as Microsoft PowerPoint to …` | 조사 예정 |
+
+**완료 기준:** `CAPABILITIES.md`의 모든 항목에 확인된 가능/불가 결과와
+동작하거나 실패하는 프로브 스크립트가 있어야 한다.
+
+#### Phase 6b — `/export pdf` 및 `/export pptx`
+
+내보내기는 역량 감사와 무관하다 — Keynote의 `export` 명령은 공식 문서화된 API다.
+새 `PresentationAction.exportPresentation(format:path:)`, 렌더러 템플릿,
+`/export pdf [<경로>]` / `/export pptx [<경로>]` 명령어를 추가한다.
+
+**완료 기준:** `/export pdf`가 `.key` 파일 옆에 읽을 수 있는 PDF를 생성한다.
+
+#### Phase 6c — Master Slide 선택 및 `LayoutIntent`
+
+`SlideLayout`(3가지 케이스, 플레이스홀더만 제어)을 `LayoutIntent`(8가지 케이스,
+플레이스홀더와 master slide 선택을 모두 담당)으로 교체한다:
+
+```swift
+enum LayoutIntent: String, Sendable, CaseIterable, Equatable {
+    case titleAndBody   // 기본값
+    case blank
+    case titleOnly
+    case section        // 섹션 구분, 대형 중앙 텍스트
+    case hero           // 대형 타이틀, 본문 최소화
+    case statement      // 단일 문장, 전면 배치
+    case comparison     // 2열 본문
+    case metric         // 큰 숫자 + 짧은 레이블
+}
+```
+
+**Master slide 매핑 전략: 이름 기반이 아닌 인덱스 기반.** 테마 master 이름은
+로케일과 테마마다 다르다. 대신:
+
+1. `/create` 또는 `/edit` 후 `KeynoteController.readMasterSlides()`가 열린
+   문서에서 `[(index: Int, name: String)]`을 반환한다.
+2. `Session.availableMasters: [MasterInfo]`가 이 목록을 저장한다.
+3. 렌더 시점에 `AppleScriptRenderer`가 `LayoutIntent` → master 인덱스를
+   사용 가능한 이름으로 매칭한다(휴리스틱: "Blank" → `.blank`, "Title"과
+   "Content"가 있는 첫 master → `.titleAndBody` 등).
+4. 매칭 실패 시 조용히 master 인덱스 1로 폴백한다.
+
+`AppleScriptRenderer.renderAddSlide`에 추가:
+```
+set base slide of newSlide to master slide <index> of <document>
+```
+
+**Session 추가:**
+```swift
+var availableMasters: [MasterInfo]   // 테마별 (index: Int, name: String)
+```
+
+**완료 기준:** `.hero`로 `addSlide`한 슬라이드가 같은 덱에서 `.titleAndBody`로
+만든 슬라이드와 시각적으로 다르게 보인다.
+
+#### Phase 6d — 테마 인식
+
+**로컬라이즈 문제:** Keynote 테마 이름은 로케일에 따라 다르다. 한국어 환경에서
+`theme "White"`는 `-1728`로 실패하고 `theme "흰색"`이 성공한다. 모델이 테마
+이름을 생성하면 영어가 아닌 모든 시스템에서 불안정해진다.
+
+**전략: 사용자 지정, 런타임 매칭.** 모델은 절대 테마를 선택하지 않는다.
+
+- `/create <name> --theme <표시이름>`은 사용자가 직접 지정한다. 사용자는
+  자신의 로케일에서 Keynote가 보여주는 이름을 그대로 볼 수 있다.
+- 런타임에 `KeynoteController.readAvailableThemes()`가
+  `themes of application "Keynote"`를 읽어 `[(index: Int, name: String)]`을 반환한다.
+- Keynoter가 사용자 문자열을 라이브 목록과 매칭한다(대소문자 무시, 접두어 매칭;
+  모호할 경우 첫 번째 선택). 매칭 실패 시 기본 테마를 사용하고 경고한다.
+
+**Session 추가:**
+```swift
+var availableThemes: [ThemeInfo]     // Keynote에서 읽어온 (index: Int, name: String)
+```
+
+**완료 기준:** `/create demo --theme <로케일 이름>`이 해당 테마로 덱을 연다.
+
+#### Phase 6e — Tool Calling 아키텍처 (실험적)
+
+현재 방식: 하나의 `streamResponse` 호출이 전체 계획을 한 번에 생성한다.
+Tool calling 방식: 모델이 `addSlide`, `updateSlide` 등을 하나씩 호출하고,
+Keynoter가 즉시 실행한 뒤 모델이 계속 진행한다.
+
+장점: 모델이 단계 사이에 슬라이드 상태를 읽을 수 있다; 복잡한 계획이 컨텍스트
+범위 내에 있다; 오류가 한 단계씩 드러난다.
+단점: 요청당 모델 왕복이 최대 8배 증가 — 전체 덱 생성이 훨씬 오래 걸린다.
+
+**Phase 6c와 6d를 실제 환경에서 검증하기 전에는 Phase 6e를 시작하지 않는다.**
+현재의 구조화 생성 방식은 핵심 사용 사례를 잘 처리한다. 복잡한 레이아웃에서
+다단계 계획이 불안정하다고 판명될 때만 tool calling을 도입한다.
+
+#### Phase 6f — 전환(Transition) 및 애니메이션
+
+역량 감사(6a)에서 `transition properties`와 build 애니메이션이 AppleScript로
+설정 가능하다고 확인될 때만 진행한다. 불가하면 이 단계를 건너뛴다.
+
+가능한 경우:
+- `SlideSpec`에 새 `TransitionSpec` 타입 추가
+- build-in / build-out 시퀀스용 새 `AnimationSpec`
+- 확인된 각 스크립트 가능 전환 유형별 렌더러 템플릿
 
 ---
 

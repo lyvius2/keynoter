@@ -426,13 +426,133 @@ planner never emits `createPresentation`, so no theme name ever reaches the
 renderer. Mapping English theme names onto the installed ones becomes real work
 only when `/create` grows a theme argument (Phase 6).
 
-### Phase 5 — Polish (current)
+### Phase 5 — Polish (done)
 Progress display (done) · graceful degradation when Apple Intelligence
-unavailable · unsaved-change warning on `/exit` (done) · context window
-management
+unavailable (done) · unsaved-change warning on `/exit` (done) · context window
+management (done: proactive round-limit reset + `onConversationReset` callback)
 
-### Phase 6 — Post-MVP
-`/export pdf` · `/export pptx` · themes · speaker notes · richer layouts
+### Phase 6 — Richer Presentations
+
+Phase 6 is split into sequential sub-phases. Each sub-phase has a clear entry
+condition; do not begin one before its predecessor is verified.
+
+#### Phase 6a — Keynote Automation Capability Audit (do first, before any code)
+
+Run small AppleScript probes to determine what Keynote actually exposes. Record
+every result in `CAPABILITIES.md` in the repo root. That file becomes the
+ground truth for all Phase 6b–6f decisions.
+
+| Capability | Probe | Status |
+|---|---|---|
+| Enumerate master slides | `master slides of document id "…"` | TBD |
+| Select master for new slide | `set base slide of newSlide to master slide N` | TBD |
+| Read available themes | `themes of application "Keynote"` | TBD |
+| Set slide transition | `transition properties of slide N` | TBD |
+| Add build animation | `make new build` | TBD |
+| Insert and position shape | `make new shape with properties {position: …}` | TBD |
+| Insert local image | `make new image with properties {file: …}` | TBD |
+| Export to PDF | `export document as PDF to …` | TBD |
+| Export to PPTX | `export document as Microsoft PowerPoint to …` | TBD |
+
+**Done when:** every row in `CAPABILITIES.md` has a confirmed Yes/No and a
+working or failing probe script.
+
+#### Phase 6b — `/export pdf` and `/export pptx`
+
+Export is independent of the capability audit — Keynote's `export` command is
+documented API. New `PresentationAction.exportPresentation(format:path:)`,
+renderer template, and `/export pdf [<path>]` / `/export pptx [<path>]` commands.
+
+**Done when:** `/export pdf` produces a readable PDF next to the `.key` file.
+
+#### Phase 6c — Master Slide Selection and `LayoutIntent`
+
+Replace `SlideLayout` (3 cases, controls placeholders only) with `LayoutIntent`
+(8 cases, drives both placeholder selection and master slide choice):
+
+```swift
+enum LayoutIntent: String, Sendable, CaseIterable, Equatable {
+    case titleAndBody   // default
+    case blank
+    case titleOnly
+    case section        // divider slide, large centered text
+    case hero           // oversized title, minimal body
+    case statement      // single sentence, full-bleed
+    case comparison     // two-column body
+    case metric         // large number + short label
+}
+```
+
+Master slide mapping strategy: **index-based, not name-based.** Theme master
+names are localized and differ between themes. Instead:
+
+1. After `/create` or `/edit`, `KeynoteController.readMasterSlides()` returns
+   `[(index: Int, name: String)]` from the open document.
+2. `Session.availableMasters: [MasterInfo]` stores this list.
+3. At render time, `AppleScriptRenderer` matches `LayoutIntent` → master index
+   by reading the available names (heuristic: "Blank" → `.blank`, first master
+   with "Title" and "Content" → `.titleAndBody`, etc.).
+4. On no match, fall back to master index 1 silently.
+
+`AppleScriptRenderer.renderAddSlide` gains:
+```
+set base slide of newSlide to master slide <index> of <document>
+```
+
+**Session additions:**
+```swift
+var availableMasters: [MasterInfo]   // (index: Int, name: String) per theme
+```
+
+**Done when:** `addSlide` with `.hero` produces a visually distinct slide from
+one with `.titleAndBody` on the same deck.
+
+#### Phase 6d — Theme Awareness
+
+**The localization problem:** Keynote theme names are locale-specific.
+`theme "White"` fails with `-1728` on a Korean system; `theme "흰색"` succeeds.
+Letting the model emit theme names would make every non-English system unreliable.
+
+**Strategy: user-specified, runtime-matched.** The model never picks a theme.
+
+- `/create <name> --theme <display-name>` takes the name from the user, who
+  can read what Keynote shows in their locale.
+- At runtime, `KeynoteController.readAvailableThemes()` reads
+  `themes of application "Keynote"` and returns `[(index: Int, name: String)]`.
+- Keynoter matches the user's string against the live list (case-insensitive
+  prefix match; on ambiguity, pick the first). On no match, use the default
+  theme and warn.
+
+**Session additions:**
+```swift
+var availableThemes: [ThemeInfo]     // (index: Int, name: String) from Keynote
+```
+
+**Done when:** `/create demo --theme <locale-name>` opens a deck in that theme.
+
+#### Phase 6e — Tool Calling Architecture (experimental)
+
+Current approach: one `streamResponse` call produces a full plan upfront.
+Tool calling replaces this: the model calls `addSlide`, `updateSlide`, etc.
+one at a time, and Keynoter executes each immediately before the model continues.
+
+Benefits: the model can read slide state between steps; complex plans stay
+within context; errors surface one step at a time.
+Cost: 8× more model round-trips per request — a full deck takes much longer.
+
+**Do not begin Phase 6e before validating Phase 6c and 6d in production.** The
+current structured-generation approach handles the core use case well. Adopt
+tool calling only if multi-step plans prove unreliable for complex layouts.
+
+#### Phase 6f — Transitions and Animations
+
+Only if the capability audit (6a) confirms that `transition properties` and
+build animations are settable via AppleScript. Otherwise skip.
+
+If feasible:
+- New `TransitionSpec` type on `SlideSpec`
+- New `AnimationSpec` for build-in / build-out sequences
+- Renderer templates for each confirmed scriptable transition type
 
 ---
 

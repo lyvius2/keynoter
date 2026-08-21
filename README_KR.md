@@ -316,8 +316,7 @@ Keynote와 통신합니다. `/status`는 세션이 붙잡은 문서에서 슬라
 평범한 말로 요청을 입력하면 Apple의 온디바이스 모델이 변경 계획을 세우고,
 검증된 `PresentationAction`으로 옮긴 뒤, 각각을 고정된 AppleScript 템플릿으로
 렌더링해 순서대로 적용합니다. `/undo`, `/redo`, `/script`가 그 결과에 연결되어
-있습니다. 모델이 계획을 쓰는 과정도 그대로 보여 줍니다. 남은 것은
-다듬기입니다 — 긴 세션을 위한 컨텍스트 윈도우 관리, 그리고 내보내기.
+있습니다. 모델이 계획을 쓰는 과정도 그대로 보여 줍니다.
 
 구현 마일스톤:
 
@@ -331,9 +330,10 @@ Keynote와 통신합니다. `/status`는 세션이 붙잡은 문서에서 슬라
 -   [x] AppleScript 확인 (`/script`)
 -   [x] 전면 창과 무관하게 id로 문서 지목
 -   [x] Foundation Models 통합 — 자연어에서 슬라이드까지
+-   [x] 컨텍스트 윈도우 관리 — 선제적 세션 리셋 및 사용자 알림
 
-PDF 및 PowerPoint 내보내기, 더 풍부한 레이아웃, 다이어그램, 이미지, 테마,
-프레젠테이션 템플릿은 이후 단계로 계획되어 있습니다.
+PDF·PowerPoint 내보내기, 더 풍부한 슬라이드 레이아웃(hero, comparison, metric 등),
+master slide 선택, 테마 인식, 애니메이션 지원은 Phase 6에서 계획되어 있습니다.
 
 ## 개발
 
@@ -375,12 +375,17 @@ keynoter/
 
 ## 다음 단계
 
-Phase 5 — 다듬기:
+Phase 6 — 더 풍부한 프레젠테이션:
 
--   Apple Intelligence를 사용할 수 없을 때의 우아한 동작
--   긴 세션을 위한 컨텍스트 윈도우 관리
+-   **6a** Keynote AppleScript 역량 감사 (설계 전에 실제로 스크립트 가능한 것 확인)
+-   **6b** `/export pdf` 및 `/export pptx`
+-   **6c** `SlideLayout`을 `LayoutIntent`로 교체 — hero, comparison, metric, section 등;
+    인덱스 기반 master slide 선택
+-   **6d** 테마 인식 — 모델이 생성한 테마 이름 대신 런타임 로케일 안전 매칭
+-   **6e** Tool calling 아키텍처 (실험적, 6c/6d 안정화 이후)
+-   **6f** 전환 및 애니메이션 (역량 감사에서 AppleScript 지원이 확인될 때만)
 
-전체 단계 계획은 [`CLAUDE_KR.md`](./CLAUDE_KR.md)에 있습니다.
+전체 단계 계획 및 아키텍처 결정 사항은 [`CLAUDE_KR.md`](./CLAUDE_KR.md)에 있습니다.
 
 ------------------------------------------------------------------------
 

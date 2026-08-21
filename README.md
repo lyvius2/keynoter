@@ -321,8 +321,7 @@ Typing a request in plain language plans a set of changes with Apple's
 on-device model, converts them to validated `PresentationAction`s, renders
 each to a fixed AppleScript template, and applies them in order --- with
 `/undo`, `/redo`, and `/script` wired to the result, and the plan shown
-taking shape while the model writes it. What remains is polish: context-window
-management for long sessions, and export.
+taking shape while the model writes it.
 
 Implementation milestones:
 
@@ -336,9 +335,11 @@ Implementation milestones:
 -   [x] AppleScript inspection (`/script`)
 -   [x] document targeting by id, independent of the front window
 -   [x] Foundation Models integration --- natural language to slides
+-   [x] context-window management --- proactive session reset with user notification
 
-PDF and PowerPoint export, richer layouts, diagrams, images, themes, and
-presentation templates are planned for later phases.
+PDF and PowerPoint export, richer slide layouts (hero, comparison, metric, …),
+master slide selection, theme awareness, and animation support are planned for
+Phase 6.
 
 ## Development
 
@@ -381,12 +382,21 @@ decisions, read:
 
 ## Planned Next Step
 
-Phase 5 --- polish:
+Phase 6 --- richer presentations:
 
--   graceful behaviour when Apple Intelligence is unavailable;
--   context-window management for long sessions.
+-   **6a** Keynote AppleScript capability audit (probe what is actually
+    scriptable before designing against it)
+-   **6b** `/export pdf` and `/export pptx`
+-   **6c** `LayoutIntent` replacing `SlideLayout` --- hero, comparison, metric,
+    section, and more; master slide selection by index
+-   **6d** Theme awareness --- locale-safe runtime matching instead of
+    model-generated theme names
+-   **6e** Tool calling architecture (experimental, after 6c/6d are stable)
+-   **6f** Transitions and animations (only if the capability audit confirms
+    AppleScript support)
 
-The full phase plan lives in [`CLAUDE.md`](./CLAUDE.md).
+The full phase plan and architectural decisions live in
+[`CLAUDE.md`](./CLAUDE.md).
 
 ------------------------------------------------------------------------
 
