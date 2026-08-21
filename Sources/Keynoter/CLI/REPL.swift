@@ -152,12 +152,19 @@ final class REPL {
             // can describe the same step while its body fills in — so only a
             // changed line is written.
             var shown: String?
-            actions = try await planner.plan(request: request, slides: session.slideMetadata) { progress in
-                let line = progress.display
-                guard line != shown else { return }
-                shown = line
-                Console.progress("  \(line)")
-            }
+            actions = try await planner.plan(
+                request: request,
+                slides: session.slideMetadata,
+                onProgress: { progress in
+                    let line = progress.display
+                    guard line != shown else { return }
+                    shown = line
+                    Console.progress("  \(line)")
+                },
+                onConversationReset: {
+                    Console.info("(대화 컨텍스트 초기화 — 슬라이드 구조는 유지됩니다)")
+                }
+            )
             Console.endProgress()
         } catch {
             Console.endProgress()

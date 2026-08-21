@@ -21,9 +21,15 @@ enum PlannerError: Error, Equatable {
 ///
 /// The session is kept alive across requests so a follow-up like "make that
 /// shorter" still has the earlier exchange to refer to. That transcript grows,
-/// so a context-window overflow is handled by starting a fresh session and
-/// retrying once — losing the conversational memory is a far better outcome
-/// than refusing the request.
+/// so the session is proactively reset after `maxRoundsPerSession` round-trips.
+/// A context-window overflow is also handled reactively by resetting and
+/// retrying once. In both cases the caller is notified so the user is never
+/// silently surprised by a lost conversation.
+///
+/// Structural context (which slides exist, in what order) is never lost because
+/// `PromptBuilder.prompt()` re-embeds the deck outline in every request. Only
+/// conversational phrasing like "make that shorter" stops working across a
+/// boundary — which is why it is announced rather than hidden.
 ///
 /// Main-actor isolated to match the REPL, which is the only caller.
 @MainActor
@@ -34,8 +40,15 @@ final class FoundationModelClient {
     /// the same slides, and it makes a misbehaving prompt reproducible.
     nonisolated static let options = GenerationOptions(sampling: .greedy)
 
+    /// After this many successful round-trips the session is proactively
+    /// reset before the next request. Eight rounds is roughly one full
+    /// creation session (eight slides) — enough working memory for most
+    /// tasks while staying well clear of the context limit.
+    nonisolated static let maxRoundsPerSession = 8
+
     private let instructions: String
     private var session: LanguageModelSession?
+    private var roundCount = 0
 
     init(instructions: String = PromptBuilder.instructions) {
         self.instructions = instructions
@@ -84,26 +97,46 @@ final class FoundationModelClient {
     /// `onProgress` is called on every snapshot the model emits — often several
     /// times per action — so the caller should render it cheaply and expect
     /// repeats.
+    ///
+    /// `onConversationReset` is called whenever the session is cleared, either
+    /// proactively (round limit reached) or reactively (context overflow). It
+    /// fires before the retry so the caller can surface a warning while the
+    /// model is still working.
     func plan(
         prompt: String,
-        onProgress: (PlanProgress) -> Void = { _ in }
+        onProgress: (PlanProgress) -> Void = { _ in },
+        onConversationReset: (() -> Void)? = nil
     ) async throws -> PresentationPlan {
         if case .unavailable(let reason) = Self.availability() {
             throw PlannerError.modelUnavailable(reason: reason)
         }
 
+        // Proactive reset: predictable and announced, rather than silent and
+        // triggered by an error the user had no warning about.
+        if roundCount >= Self.maxRoundsPerSession {
+            session = nil
+            roundCount = 0
+            onConversationReset?()
+        }
+
         do {
-            return try await stream(prompt, onProgress)
+            let result = try await stream(prompt, onProgress)
+            roundCount += 1
+            return result
         } catch let error as LanguageModelSession.GenerationError {
-            // The transcript filled up. Drop it and try once with a clean
-            // session — the deck outline travels in the prompt, so nothing the
-            // planner actually needs is lost.
+            // The transcript filled up before the proactive reset could fire —
+            // e.g. an unusually large plan was the last request. Drop it and
+            // try once with a clean session.
             guard case .exceededContextWindowSize = error else {
                 throw Self.translate(error)
             }
             session = nil
+            roundCount = 0
+            onConversationReset?()
             do {
-                return try await stream(prompt, onProgress)
+                let result = try await stream(prompt, onProgress)
+                roundCount += 1
+                return result
             } catch {
                 throw Self.translate(error)
             }
@@ -169,6 +202,7 @@ final class FoundationModelClient {
     /// no longer open. See `REPL.attachDocument(path:ref:mode:)`.
     func resetConversation() {
         session = nil
+        roundCount = 0
     }
 
     // MARK: - Errors

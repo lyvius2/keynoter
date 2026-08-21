@@ -109,4 +109,10 @@ struct FoundationModelClientTests {
         client.resetConversation()
         #expect(client.hasConversation == false)
     }
+
+    @Test("maxRoundsPerSession is a positive, finite limit")
+    func maxRoundsIsPositive() {
+        #expect(FoundationModelClient.maxRoundsPerSession > 0)
+        #expect(FoundationModelClient.maxRoundsPerSession < 100)
+    }
 }
